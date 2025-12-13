@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WalkyBot Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="dashboard-layout">
+  <header class="dashboard-header">
+    <div>
+      <h1>WalkyBot Dashboard</h1>
+      <p style="color:#6b7280; margin:0;">Real-time positions & performance</p>
+    </div>
+    <button>Logout</button>
+  </header>
+  <section class="metrics-grid">
+    <article class="metric">
+      <strong>Total Balance</strong>
+      <div class="value">$12,458.50</div>
+      <div class="helper">+2,458.50 (24.6%)</div>
+    </article>
+    <article class="metric">
+      <strong>Active Trades</strong>
+      <div class="value">5</div>
+      <div class="helper">2 long · 3 short</div>
+    </article>
+    <article class="metric">
+      <strong>Today's P&amp;L</strong>
+      <div class="value" style="color:#10b981;">+$342.80</div>
+      <div class="helper">+2.8%</div>
+    </article>
+    <article class="metric">
+      <strong>Win Rate (30d)</strong>
+      <div class="value">62.3%</div>
+      <div class="helper">+4.2% vs last month</div>
+    </article>
+  </section>
+  <section class="section-card">
+    <h2>Active Trades</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Entry</th>
+            <th>Current</th>
+            <th>P&amp;L</th>
+            <th>Stop Loss</th>
+            <th>Take Profit</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BTCUSDT</td>
+            <td>$89,450</td>
+            <td>$90,234</td>
+            <td style="color:#10b981;">+$156.80 (+0.9%)</td>
+            <td>$88,200</td>
+            <td>$94,500</td>
+            <td><span class="badge">ACTIVE</span></td>
+          </tr>
+          <tr>
+            <td>ETHUSDT</td>
+            <td>$3,245</td>
+            <td>$3,298</td>
+            <td style="color:#10b981;">+$106.00 (+1.6%)</td>
+            <td>$3,150</td>
+            <td>$3,440</td>
+            <td><span class="badge">ACTIVE</span></td>
+          </tr>
+          <tr>
+            <td>SOLUSDT</td>
+            <td>$145.20</td>
+            <td>$147.80</td>
+            <td style="color:#10b981;">+$52.00 (+1.8%)</td>
+            <td>$142.00</td>
+            <td>$154.00</td>
+            <td><span class="badge">ACTIVE</span></td>
+          </tr>
+          <tr>
+            <td>LINKUSDT</td>
+            <td>$18.45</td>
+            <td>$18.12</td>
+            <td style="color:#ef4444;">-$33.00 (-1.8%)</td>
+            <td>$17.80</td>
+            <td>$19.50</td>
+            <td><span class="badge">ACTIVE</span></td>
+          </tr>
+          <tr>
+            <td>AVAXUSDT</td>
+            <td>$42.80</td>
+            <td>$43.90</td>
+            <td style="color:#10b981;">+$22.00 (+2.6%)</td>
+            <td>$41.50</td>
+            <td>$45.50</td>
+            <td><span class="badge">ACTIVE</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="section-card">
+    <h2>Recent Closed Trades</h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>P&amp;L</th>
+            <th>Duration</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BTCUSDT</td>
+            <td>$87,200</td>
+            <td>$89,450</td>
+            <td style="color:#10b981;">+$450.00 (+2.6%)</td>
+            <td>4h 23m</td>
+            <td><span class="badge">TP HIT</span></td>
+          </tr>
+          <tr>
+            <td>ETHUSDT</td>
+            <td>$3,180</td>
+            <td>$3,320</td>
+            <td style="color:#10b981;">+$280.00 (+4.4%)</td>
+            <td>6h 12m</td>
+            <td><span class="badge">TP HIT</span></td>
+          </tr>
+          <tr>
+            <td>XRPUSDT</td>
+            <td>$0.6450</td>
+            <td>$0.6280</td>
+            <td style="color:#ef4444;">-$85.00 (-2.6%)</td>
+            <td>2h 45m</td>
+            <td><span class="badge negative">SL HIT</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <div class="stats-grid">
+    <div class="stats-card">
+      <h3>Top Performers (30d)</h3>
+      <div class="value">SOLUSDT +18.4%</div>
+      <div class="value" style="font-size:1rem;">ETHUSDT +12.8%</div>
+      <div class="value" style="font-size:1rem;">BTCUSDT +9.2%</div>
+    </div>
+    <div class="stats-card">
+      <h3>Strategy Stats</h3>
+      <div class="value">Total Trades 156</div>
+      <div class="value" style="font-size:1rem; margin-top:0.4rem;">Avg Win +$89.50</div>
+      <div class="value" style="font-size:1rem; margin-top:0.2rem;">Avg Loss -$42.30</div>
+      <div class="value" style="font-size:1rem; margin-top:0.2rem;">Profit Factor 2.12</div>
+    </div>
+    <div class="stats-card">
+      <h3>Risk Metrics</h3>
+      <div class="value" style="color:#ef4444;">Max Drawdown -8.4%</div>
+      <div class="value" style="font-size:1rem; margin-top:0.4rem;">Sharpe Ratio 2.45</div>
+      <div class="value" style="font-size:1rem; margin-top:0.2rem;">Risk/Reward 1:2.1</div>
+    </div>
+  </div>
+</body>
+</html>

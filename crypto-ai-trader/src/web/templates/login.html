@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WalkyBot Login</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div class="gradient-app">
+    <div class="card">
+      <img src="https://img.icons8.com/emoji/96/000000/robot-emoji.png" alt="WalkyBot" width="64" />
+      <h1>WalkyBot</h1>
+      <p>Enter your 6-digit passcode</p>
+      <form method="post" id="passcodeForm" class="passcode-grid">
+        {% for i in range(6) %}
+          <input type="text" 
+                 maxlength="1" 
+                 inputmode="numeric" 
+                 pattern="[0-9]" 
+                 name="passcode" 
+                 id="digit-{{ i }}"
+                 autocomplete="off" 
+                 required />
+        {% endfor %}
+        <button class="btn-primary" type="submit" id="loginBtn" style="grid-column: 1 / -1;">
+          Login
+        </button>
+      </form>
+      {% if error %}
+      <p style="color:#ef4444; font-weight:600; margin-top:10px;">{{ error }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('passcodeForm');
+      const inputs = Array.from(document.querySelectorAll('.passcode-grid input'));
+      const loginBtn = document.getElementById('loginBtn');
+      
+      // Auto-focus first input
+      inputs[0].focus();
+
+      inputs.forEach((input, index) => {
+        // Only allow numbers
+        input.addEventListener('input', function(e) {
+          const value = e.target.value;
+          
+          // Remove non-numeric characters
+          if (!/^\d$/.test(value)) {
+            e.target.value = '';
+            return;
+          }
+
+          // Add filled class
+          if (value) {
+            e.target.classList.add('filled');
+            e.target.classList.remove('error');
+            
+            // Auto-move to next input
+            if (index < inputs.length - 1) {
+              inputs[index + 1].focus();
+            }
+          } else {
+            e.target.classList.remove('filled');
+          }
+
+          // Enable/disable login button
+          updateLoginButton();
+        });
+
+        // Handle backspace
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Backspace' && !e.target.value && index > 0) {
+            inputs[index - 1].focus();
+            inputs[index - 1].value = '';
+            inputs[index - 1].classList.remove('filled');
+          }
+        });
+
+        // Handle paste
+        input.addEventListener('paste', function(e) {
+          e.preventDefault();
+          const pastedData = e.clipboardData.getData('text').replace(/\D/g, '');
+          
+          if (pastedData.length === 6) {
+            pastedData.split('').forEach((char, i) => {
+              if (inputs[i]) {
+                inputs[i].value = char;
+                inputs[i].classList.add('filled');
+              }
+            });
+            inputs[5].focus();
+            updateLoginButton();
+          }
+        });
+
+        // Focus handling
+        input.addEventListener('focus', function(e) {
+          e.target.select();
+        });
+      });
+
+      // Update login button state
+      function updateLoginButton() {
+        const allFilled = inputs.every(input => input.value.length === 1);
+        loginBtn.disabled = !allFilled;
+      }
+
+      // Form submission
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Validate all inputs
+        const passcode = inputs.map(input => input.value).join('');
+        
+        if (passcode.length !== 6 || !/^\d{6}$/.test(passcode)) {
+          inputs.forEach(input => input.classList.add('error'));
+          setTimeout(() => {
+            inputs.forEach(input => input.classList.remove('error'));
+          }, 500);
+          return;
+        }
+
+        // Show loading state
+        loginBtn.innerHTML = '<span class="spinner"></span> Verifying...';
+        loginBtn.disabled = true;
+        form.classList.add('loading');
+
+        // Create form data
+        const formData = new FormData();
+        formData.append('passcode', passcode);
+
+        // Submit form
+        fetch('{{ url_for("login") }}', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => {
+          if (response.redirected) {
+            window.location.href = response.url;
+          } else {
+            return response.text();
+          }
+        })
+        .then(html => {
+          if (html) {
+            // Error occurred, show error state
+            inputs.forEach(input => {
+              input.classList.add('error');
+              input.value = '';
+            });
+            inputs[0].focus();
+            loginBtn.innerHTML = 'Login';
+            loginBtn.disabled = false;
+            form.classList.remove('loading');
+            
+            // Show error message
+            const existingError = document.querySelector('.card p[style*="color:#ef4444"]');
+            if (!existingError) {
+              const errorMsg = document.createElement('p');
+              errorMsg.style.color = '#ef4444';
+              errorMsg.style.fontWeight = '600';
+              errorMsg.style.marginTop = '10px';
+              errorMsg.textContent = 'Invalid passcode. Please try again.';
+              form.parentNode.insertBefore(errorMsg, form.nextSibling);
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Login error:', error);
+          loginBtn.innerHTML = 'Login';
+          loginBtn.disabled = false;
+          form.classList.remove('loading');
+        });
+      });
+
+      // Initial button state
+      updateLoginButton();
+    });
+  </script>
+</body>
+</html>
