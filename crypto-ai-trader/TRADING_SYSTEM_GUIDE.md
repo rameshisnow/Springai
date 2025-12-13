@@ -1,4 +1,4 @@
-# WalkyBot Trading System - Complete Guide
+# SpringAI Trading System - Complete Guide
 
 ## 🔐 Login Issue Fix
 

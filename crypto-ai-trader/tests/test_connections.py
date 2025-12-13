@@ -148,7 +148,7 @@ def test_telegram():
         from src.monitoring.notifications import telegram_notifier
         
         # Send test message
-        success = telegram_notifier.send_message("🧪 Connection test from WalkyBot")
+        success = telegram_notifier.send_message("🧪 Connection test from SpringAI")
         
         if success:
             logger.info("✅ Telegram: Message sent successfully")
@@ -197,7 +197,7 @@ def test_order_system():
 def run_all_tests():
     """Run all connection tests"""
     logger.info("\n" + "=" * 60)
-    logger.info("🧪 WALKYBOT CONNECTION TEST SUITE")
+    logger.info("🧪 SPRINGAI CONNECTION TEST SUITE")
     logger.info("=" * 60)
     
     results = {}

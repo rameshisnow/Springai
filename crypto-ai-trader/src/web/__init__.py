@@ -1,1 +1,1 @@
-"""Flask web frontend for WalkyBot dashboard"""
+"""Flask web frontend for SpringAI dashboard"""

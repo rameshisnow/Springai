@@ -94,7 +94,7 @@ crypto-ai-trader/
 
 ## 🎨 Web Login & Dashboard
 
-- `ui/login.html` mirrors the WalkyBot login mockup with the robot avatar, passcode grid, and gradient background.
+- `ui/login.html` mirrors the SpringAI login mockup with the robot avatar, passcode grid, and gradient background.
 - `ui/dashboard.html` is a static replica of the provided dashboard: balance cards, active/closed trade tables, performance stats, and risk metrics.
 - Shared stylesheet `ui/styles.css` keeps both pages consistent, and you can drop them into a Flask route later for dynamic data.
 
