@@ -20,7 +20,7 @@ psycopg2-binary==2.9.9  # PostgreSQL adapter
 redis==5.0.1
 
 # Monitoring & Logging
-python-telegram-bot==19.7
+python-telegram-bot==21.11.1
 Flask==3.0.0
 prometheus-client==0.19.0
 
