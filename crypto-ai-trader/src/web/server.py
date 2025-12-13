@@ -69,8 +69,15 @@ def dashboard():
     sydney_tz = pytz.timezone('Australia/Sydney')
     scan_info = _get_scan_timing(sydney_tz)
 
-    # Count active positions for display
-    active_position_count = len(positions_data)
+    # Count active positions for display (filter out dust < $1)
+    active_position_count = 0
+    for symbol, pos in positions_data.items():
+        quantity = pos.get('quantity', 0)
+        current_price = pos.get('current_price', 0)
+        position_value = quantity * current_price
+        if position_value >= 1.0:  # Only count positions worth $1 or more
+            active_position_count += 1
+    
     max_positions = constants.MAX_OPEN_POSITIONS
 
     metrics = [
