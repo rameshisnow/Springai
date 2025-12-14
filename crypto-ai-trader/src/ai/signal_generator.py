@@ -423,7 +423,7 @@ class SignalOrchestrator:
             
             # Write with ensure_ascii=False and proper encoding
             with open(screening_file, 'w', encoding='utf-8') as f:
-                json.dump(results_summary, f, indent=2, ensure_ascii=True, default=str)
+                json.dump(results_summary, f, indent=2, ensure_ascii=True)
             
             logger.info(f"💾 Screening complete: {passed_count} passed, {failed_count} failed, {skipped_count} skipped, {error_count} errors")
             logger.info(f"💾 Results saved to {screening_file}")
