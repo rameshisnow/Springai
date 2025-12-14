@@ -263,6 +263,7 @@ class SignalOrchestrator:
         logger.info("=" * 60)
 
         filtered: List[Dict] = []
+        screening_details: Dict[str, Dict] = {}  # Track why coins pass/fail
 
         # Benchmark: BTC performance
         btc_1h = await binance_fetcher.get_klines(symbol="BTCUSDT", interval="1h", limit=30)
@@ -273,6 +274,8 @@ class SignalOrchestrator:
         if not btc_4h.empty:
             btc_change_4h = ((btc_4h.iloc[-1]['close'] / btc_4h.iloc[-2]['close']) - 1) * 100 if len(btc_4h) >= 2 else 0.0
 
+        logger.info(f"📊 BTC benchmark: 1H={btc_change_1h:+.2f}%, 4H={btc_change_4h:+.2f}%")
+
         for idx, coin in enumerate(top_coins, 1):
             base = coin.get('symbol', '').upper()
             symbol = f"{base}USDT"
@@ -281,6 +284,7 @@ class SignalOrchestrator:
                 df_4h = await binance_fetcher.get_klines(symbol=symbol, interval='4h', limit=120)
 
                 if df_1h.empty or df_4h.empty or len(df_1h) < 30 or len(df_4h) < 10:
+                    screening_details[symbol] = {'status': 'failed', 'reason': 'Insufficient data'}
                     continue
 
                 df_1h = compute_all_indicators(df_1h)
@@ -325,7 +329,30 @@ class SignalOrchestrator:
                 breakout_ok = is_breakout
                 strength_ok = rel_strength
 
+                # Track screening result
+                screening_details[symbol] = {
+                    'status': 'passed' if (ema_ok and rsi_ok and breakout_ok and strength_ok) else 'failed',
+                    'current_price': round(close_1h, 4),
+                    'filters': {
+                        'ema': {'passed': ema_ok, 'close_1h': round(close_1h, 4), 'ema9_1h': round(ema9_1h, 4), 'ema21_1h': round(ema21_1h, 4), 'close_4h': round(close_4h, 4), 'ema21_4h': round(ema21_4h, 4)},
+                        'rsi': {'passed': rsi_ok, 'rsi_1h': round(rsi_1h, 2), 'rsi_4h': round(rsi_4h, 2), 'min': SCREEN_RSI_MIN, 'max': SCREEN_RSI_MAX},
+                        'breakout': {'passed': breakout_ok, 'is_breakout': is_breakout, 'above_20bar_high': breakout_20, 'above_50bar_high': breakout_n},
+                        'btc_strength': {'passed': strength_ok, 'coin_change_1h': round(change_1h, 2), 'btc_change_1h': round(btc_change_1h, 2), 'coin_change_4h': round(change_4h, 2), 'btc_change_4h': round(btc_change_4h, 2)},
+                    }
+                }
+
                 if not (ema_ok and rsi_ok and breakout_ok and strength_ok):
+                    # Log why this coin failed
+                    reasons = []
+                    if not ema_ok:
+                        reasons.append(f"EMA (C:{close_1h:.2f}>E9:{ema9_1h:.2f}>E21:{ema21_1h:.2f})")
+                    if not rsi_ok:
+                        reasons.append(f"RSI 1H:{rsi_1h:.1f} 4H:{rsi_4h:.1f} (need {SCREEN_RSI_MIN}-{SCREEN_RSI_MAX})")
+                    if not breakout_ok:
+                        reasons.append(f"Breakout")
+                    if not strength_ok:
+                        reasons.append(f"BTC strength (C1H:{change_1h:+.2f}% vs BTC:{btc_change_1h:+.2f}%)")
+                    screening_details[symbol]['reason'] = ' | '.join(reasons)
                     continue
 
                 # 24H change for prompt context
@@ -357,7 +384,27 @@ class SignalOrchestrator:
 
             except Exception as e:
                 logger.error(f"Error screening {symbol}: {e}")
+                screening_details[symbol] = {'status': 'error', 'reason': str(e)}
                 continue
+
+        # Save screening details to JSON for inspection
+        try:
+            import json
+            from pathlib import Path
+            screening_file = "data/screening_results.json"
+            results_summary = {
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'total_coins_evaluated': len(screening_details),
+                'passed': len(filtered),
+                'failed': len(screening_details) - len(filtered),
+                'coins': screening_details
+            }
+            Path(screening_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(screening_file, 'w') as f:
+                json.dump(results_summary, f, indent=2)
+            logger.info(f"💾 Screening details saved to {screening_file}")
+        except Exception as e:
+            logger.error(f"Failed to save screening results: {e}")
 
         logger.info(f"Primary screen complete: {len(filtered)} coin(s) qualified")
         return filtered
