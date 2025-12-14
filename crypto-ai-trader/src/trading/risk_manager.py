@@ -24,6 +24,7 @@ from src.config.constants import (
     MAX_POSITION_EXPOSURE_PERCENT,
     USE_DYNAMIC_BALANCE,
     BALANCE_BUFFER_PERCENT,
+    GLOBAL_TRADING_PAUSE,
 )
 
 
@@ -351,6 +352,10 @@ class RiskManager:
         Returns:
             (is_valid, message)
         """
+        # Global kill switch
+        if GLOBAL_TRADING_PAUSE:
+            return False, "Global trading pause is enabled"
+
         # Check circuit breaker
         if self.is_circuit_breaker_active():
             return False, "Circuit breaker active - trading paused"

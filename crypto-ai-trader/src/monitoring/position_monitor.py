@@ -113,40 +113,66 @@ class PositionMonitor:
                                         exit_triggered = True
                                         exit_reason = f"TAKE PROFIT {i+1} HIT @ ${current_price:.2f}"
                                         logger.info(f"✅ {symbol}: {exit_reason}")
-                                        
-                                        # EXECUTE TAKE PROFIT - Partial or full exit
+
+                                        # EXECUTE TAKE PROFIT - Partial exit based on tp['position_percent']
                                         try:
                                             if not DRY_RUN_ENABLED and not MONITORING_ONLY:
-                                                logger.info(f"🟢 Executing take profit sell for {symbol}...")
-                                                
-                                                # For simplicity, close entire position at first TP
-                                                # TODO: Implement partial exits based on tp['position_percent']
-                                                result = order_manager.close_position(
-                                                    symbol=symbol,
-                                                    reason=exit_reason
-                                                )
-                                                
-                                                if result.get('status') == 'success':
-                                                    logger.info(f"✅ Take profit executed: {result.get('message')}")
-                                                    
-                                                    # Send notification
-                                                    await notifier.send_trade_alert(
-                                                        f"✅ TAKE PROFIT EXECUTED\n"
-                                                        f"{symbol}\n"
-                                                        f"Entry: ${entry_price:.2f}\n"
-                                                        f"Exit: ${current_price:.2f}\n"
-                                                        f"Profit: +{pnl_percent:.2f}%"
+                                                logger.info(f"🟢 Executing partial take profit for {symbol}...")
+
+                                                # Compute partial quantity
+                                                tp_percent = tp.get('position_percent', 0)
+                                                if tp_percent <= 0:
+                                                    logger.warning(
+                                                        f"⚠️ TP level {i+1} for {symbol} has invalid position_percent; skipping"
                                                     )
                                                 else:
-                                                    logger.error(f"❌ Take profit execution failed: {result.get('message')}")
+                                                    # Determine how much is still available to sell
+                                                    total_quantity = position.quantity
+                                                    target_quantity = total_quantity * tp_percent
+
+                                                    # If this is the last TP level, sell whatever remains
+                                                    if i == len(position.take_profit_targets) - 1:
+                                                        sell_quantity = total_quantity
+                                                    else:
+                                                        sell_quantity = min(target_quantity, total_quantity)
+
+                                                    if sell_quantity <= 0:
+                                                        logger.warning(
+                                                            f"⚠️ Computed sell quantity <= 0 for {symbol} at TP {i+1}; skipping"
+                                                        )
+                                                    else:
+                                                        result = order_manager.close_position(
+                                                            symbol=symbol,
+                                                            reason=exit_reason,
+                                                            quantity_override=sell_quantity,
+                                                            keep_open=True,
+                                                        )
+
+                                                        if result.get('status') == 'success':
+                                                            logger.info(f"✅ Take profit executed: {result.get('message')}")
+
+                                                            await notifier.send_trade_alert(
+                                                                f"✅ PARTIAL TAKE PROFIT EXECUTED\n"
+                                                                f"{symbol}\n"
+                                                                f"Entry: ${entry_price:.2f}\n"
+                                                                f"Exit: ${current_price:.2f}\n"
+                                                                f"Sold: {sell_quantity:.6f}\n"
+                                                                f"Profit: +{pnl_percent:.2f}%"
+                                                            )
+                                                        else:
+                                                            logger.error(
+                                                                f"❌ Take profit execution failed: {result.get('message')}"
+                                                            )
                                             else:
-                                                logger.info(f"📝 DRY RUN: Would close {symbol} at take profit")
-                                        
+                                                logger.info(
+                                                    f"📝 DRY RUN: Would execute partial take profit for {symbol} at TP {i+1}"
+                                                )
+
                                         except Exception as e:
                                             logger.error(f"Error executing take profit for {symbol}: {e}")
                                             import traceback
                                             traceback.print_exc()
-                                        
+
                                         break
                             
                             if not exit_triggered:

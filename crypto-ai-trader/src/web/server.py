@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone
 import pytz
 
@@ -11,6 +11,7 @@ from src.config.settings import config
 from src.trading.risk_manager import risk_manager
 from src.trading.binance_client import binance_client
 from src.utils.database import get_recent_trades
+from src.utils.logger import logger
 from src.monitoring.signal_monitor import signal_monitor
 from src.config import constants
 
@@ -69,6 +70,9 @@ def dashboard():
     sydney_tz = pytz.timezone('Australia/Sydney')
     scan_info = _get_scan_timing(sydney_tz)
 
+    # 4. System health / kill switch status
+    system_health = _load_system_health()
+
     # Count active positions for display (filter out dust < $1)
     active_position_count = 0
     for symbol, pos in positions_data.items():
@@ -101,6 +105,11 @@ def dashboard():
             "value": signal_stats['total'],
             "helper": f"{signal_stats['high_confidence']} high confidence",
         },
+            {
+                "label": "Kill Switch",
+                "value": "PAUSED" if system_health.get("global_trading_pause") else "ACTIVE",
+                "helper": system_health.get("status_message", "Toggle via config / system_health.json"),
+            },
     ]
 
     active_trades = _build_active_trades(positions_data)
@@ -128,6 +137,7 @@ def dashboard():
         dry_run=constants.DRY_RUN_ENABLED,
         last_claude_response=last_claude_response,
         scan_info=scan_info,
+        system_health=system_health,
     )
 
 
@@ -258,7 +268,7 @@ def _get_last_claude_response() -> Dict:
 
 
 def _get_scan_timing(sydney_tz) -> Dict:
-    """Calculate last and next scan times in Sydney timezone"""
+    """Calculate last and next scan times + status in Sydney timezone"""
     try:
         import json
         from pathlib import Path
@@ -273,6 +283,8 @@ def _get_scan_timing(sydney_tz) -> Dict:
         # Read last scan from scan history file (more reliable than signal history)
         scan_file = Path("data/last_scan.json")
         last_scan_sydney = None
+        scan_status = None
+        scan_reason = None
         
         if scan_file.exists():
             try:
@@ -280,6 +292,8 @@ def _get_scan_timing(sydney_tz) -> Dict:
                     scan_data = json.load(f)
                     last_scan_utc = datetime.fromisoformat(scan_data['last_scan_utc'].replace('Z', '+00:00'))
                     last_scan_sydney = last_scan_utc.astimezone(sydney_tz)
+                    scan_status = scan_data.get('status')
+                    scan_reason = scan_data.get('reason')
             except Exception as e:
                 logger.error(f"Failed to read scan history: {e}")
         
@@ -299,6 +313,8 @@ def _get_scan_timing(sydney_tz) -> Dict:
             'last_scan': fmt(last_scan_sydney) if last_scan_sydney else 'Not yet run',
             'next_scan': fmt(next_scan_sydney),
             'interval_minutes': constants.ANALYSIS_INTERVAL_MINUTES,
+            'status': scan_status or 'unknown',
+            'reason': scan_reason or '',
         }
     except Exception as e:
         return {
@@ -306,6 +322,39 @@ def _get_scan_timing(sydney_tz) -> Dict:
             'next_scan': 'Error',
             'error': str(e)
         }
+
+
+def _load_system_health() -> Dict:
+    """Load system health / kill switch state from JSON file.
+
+    This allows operators to pause trading without redeploying code.
+    """
+    # Default values if file is missing or invalid
+    health = {
+        "global_trading_pause": getattr(constants, "GLOBAL_TRADING_PAUSE", False),
+        "status": "OK",
+        "status_message": "",
+        "last_error": None,
+        "last_updated": None,
+    }
+
+    try:
+        health_file = Path(config.DATA_DIR) / "system_health.json"
+        if not health_file.exists():
+            return health
+
+        with health_file.open("r") as f:
+            file_data = json.load(f)
+
+        # Merge file data over defaults
+        health.update({k: v for k, v in file_data.items() if k in health})
+    except Exception:
+        # On error, fall back to defaults but mark degraded
+        health["status"] = "DEGRADED"
+        if not health.get("status_message"):
+            health["status_message"] = "Error reading system_health.json"
+
+    return health
 
 
 def _load_positions_from_file() -> Dict[str, Dict]:
@@ -320,7 +369,7 @@ def _load_positions_from_file() -> Dict[str, Dict]:
         return {}
 
 
-def _format_local_time(timestamp: str) -> str:
+def _format_local_time(timestamp: Optional[str]) -> str:
     """Format naive timestamps stored by the monitor into a readable string"""
     if not timestamp:
         return "N/A"

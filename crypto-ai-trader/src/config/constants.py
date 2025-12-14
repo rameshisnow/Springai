@@ -236,6 +236,10 @@ WHALE_MOVEMENT_THRESHOLD_USD = 1_000_000
 
 # ==================== SYSTEM HEALTH ====================
 
+# Global kill switch – when True, no new trades are opened.
+# Existing positions can still be monitored/closed by SL/TP.
+GLOBAL_TRADING_PAUSE = False
+
 HEARTBEAT_INTERVAL_SECONDS = 300  # Check system health every 5 min
 API_TIMEOUT_SECONDS = 30
 RECONNECT_ATTEMPTS = 5

@@ -378,7 +378,13 @@ class OrderManager:
         except Exception as e:
             trade_logger.error(f"Error cancelling orders: {e}")
     
-    def close_position(self, symbol: str, reason: str = "Manual") -> Dict:
+    def close_position(
+        self,
+        symbol: str,
+        reason: str = "Manual",
+        quantity_override: Optional[float] = None,
+        keep_open: bool = False,
+    ) -> Dict:
         """
         Synchronous wrapper to close a position (for use by position monitor)
         
@@ -407,12 +413,15 @@ class OrderManager:
                 }
             
             position = risk_manager.positions[symbol]
+
+            # Determine quantity to sell (allow partial exits)
+            sell_quantity = quantity_override if quantity_override is not None else position.quantity
             
             # Execute market sell order
             order_result = binance_client.place_market_order(
                 symbol=symbol,
                 side="SELL",
-                quantity=position.quantity,
+                quantity=sell_quantity,
             )
             
             if not order_result or 'orderId' not in order_result:
@@ -421,16 +430,24 @@ class OrderManager:
                     'message': 'Failed to place sell order'
                 }
             
-            # Calculate P&L
-            pnl_dollars = (current_price - position.entry_price) * position.quantity
+            # Calculate P&L on sold size only
+            pnl_dollars = (current_price - position.entry_price) * sell_quantity
             pnl_percent = ((current_price - position.entry_price) / position.entry_price) * 100
-            
-            # Close position in risk manager
-            risk_manager.close_position(symbol, current_price, reason)
+
+            # Update or close position in risk manager
+            if keep_open and sell_quantity < position.quantity:
+                # Reduce quantity but keep entry/SL/TP the same
+                position.quantity -= sell_quantity
+                risk_manager._save_positions_to_file()
+                action_desc = "partially closed"
+            else:
+                # Close entire position
+                risk_manager.close_position(symbol, current_price, reason)
+                action_desc = "closed"
             
             # Log the exit
             trade_logger.info(
-                f"✅ Position closed: {symbol} @ ${current_price:.2f} | "
+                f"✅ Position {action_desc}: {symbol} @ ${current_price:.2f} | "
                 f"P&L: ${pnl_dollars:.2f} ({pnl_percent:+.2f}%) | "
                 f"Reason: {reason}"
             )

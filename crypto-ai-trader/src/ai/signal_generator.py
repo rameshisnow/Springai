@@ -61,14 +61,21 @@ class SignalOrchestrator:
         # Startup validation: Check for position cap violations
         self._validate_position_cap_on_startup()
     
-    def _record_scan_completion(self):
-        """Record scan completion timestamp for dashboard tracking"""
+    def _record_scan_completion(self, status: str = "ok", reason: str = ""):
+        """Record scan completion metadata for dashboard tracking.
+
+        status: one of ["ok", "no_candidates", "outside_hours", "positions_full",
+                        "daily_loss_limit", "error"]
+        reason: human-readable explanation
+        """
         import json
         from pathlib import Path
         try:
             scan_data = {
                 'last_scan_utc': datetime.now(timezone.utc).isoformat(),
-                'interval_minutes': ANALYSIS_INTERVAL_MINUTES
+                'interval_minutes': ANALYSIS_INTERVAL_MINUTES,
+                'status': status,
+                'reason': reason,
             }
             Path(self.scan_history_file).parent.mkdir(parents=True, exist_ok=True)
             with open(self.scan_history_file, 'w') as f:
@@ -461,7 +468,7 @@ Output JSON only:
             # Check trading hours
             if current_hour not in TRADING_HOURS_UTC:
                 logger.info(f"Outside trading hours (current: {current_hour} UTC)")
-                self._record_scan_completion()
+                self._record_scan_completion(status="outside_hours", reason="Outside trading hours")
                 return {"status": "skipped", "reason": "outside_trading_hours"}
             
             logger.info("\n" + "=" * 80)
@@ -485,7 +492,7 @@ Output JSON only:
 
             if not coins_data:
                 logger.warning("No coins met primary screen (EMA9/21 + RSI + breakout + BTC strength)")
-                self._record_scan_completion()
+                self._record_scan_completion(status="no_candidates", reason="No coins met primary screen")
                 return {"status": "no_candidates"}
             
             # Check position capacity
@@ -531,6 +538,7 @@ Output JSON only:
                     logger.info("=" * 60)
                     
                     result = await self._run_light_monitoring(coins_data)
+                    self._record_scan_completion(status="positions_full", reason="Positions full, replacement disabled")
                     return result
             else:
                 logger.info("\n" + "=" * 60)
@@ -541,12 +549,14 @@ Output JSON only:
                 logger.info("=" * 60)
                 
                 result = await self._run_light_monitoring(coins_data)
+                self._record_scan_completion(status="positions_full", reason="Positions full, no weak positions")
                 return result
         
         except Exception as e:
             logger.error(f"Error in analysis cycle: {e}")
             import traceback
             traceback.print_exc()
+            self._record_scan_completion(status="error", reason=str(e))
             return {"status": "error", "reason": str(e)}
     
     async def _run_full_analysis(self, coins_data: List[Dict]) -> Dict[str, Any]:
