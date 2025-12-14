@@ -260,6 +260,9 @@ def _get_last_claude_response() -> Dict:
 def _get_scan_timing(sydney_tz) -> Dict:
     """Calculate last and next scan times in Sydney timezone"""
     try:
+        import json
+        from pathlib import Path
+        
         # Always show times in Sydney with explicit timezone label (AEST/AEDT)
         def fmt(dt: datetime):
             return dt.strftime('%d %b %Y, %I:%M %p %Z (Sydney)')
@@ -267,15 +270,20 @@ def _get_scan_timing(sydney_tz) -> Dict:
         now_sydney = datetime.now(sydney_tz)
         interval = timedelta(minutes=constants.ANALYSIS_INTERVAL_MINUTES)
 
-        # Get last scan time from signal history
-        signals = signal_monitor.get_recent_signals(hours=24, limit=1)
-        if signals and signals[0].get('timestamp'):
-            last_scan_utc = datetime.fromisoformat(signals[0]['timestamp'].replace('Z', '+00:00'))
-            last_scan_sydney = last_scan_utc.astimezone(sydney_tz)
-        else:
-            last_scan_sydney = None
+        # Read last scan from scan history file (more reliable than signal history)
+        scan_file = Path("data/last_scan.json")
+        last_scan_sydney = None
         
-        # Calculate next scan (assuming 30-minute intervals)
+        if scan_file.exists():
+            try:
+                with open(scan_file, 'r') as f:
+                    scan_data = json.load(f)
+                    last_scan_utc = datetime.fromisoformat(scan_data['last_scan_utc'].replace('Z', '+00:00'))
+                    last_scan_sydney = last_scan_utc.astimezone(sydney_tz)
+            except Exception as e:
+                logger.error(f"Failed to read scan history: {e}")
+        
+        # Calculate next scan
         if last_scan_sydney:
             # If the last scan is stale, roll forward to the next future slot
             intervals_passed = max(

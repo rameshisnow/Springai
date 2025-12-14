@@ -52,6 +52,7 @@ class SignalOrchestrator:
         self.last_light_check_time = None
         self.position_count = 0
         self.token_usage_session = 0
+        self.scan_history_file = "data/last_scan.json"
         logger.info("Signal Orchestrator initialized (Three-Tier Architecture)")
         logger.info("  Tier 1: Market Watch (lightweight)")
         logger.info("  Tier 2: AI Decision (full Claude only when capacity exists)")
@@ -59,6 +60,21 @@ class SignalOrchestrator:
         
         # Startup validation: Check for position cap violations
         self._validate_position_cap_on_startup()
+    
+    def _record_scan_completion(self):
+        """Record scan completion timestamp for dashboard tracking"""
+        import json
+        from pathlib import Path
+        try:
+            scan_data = {
+                'last_scan_utc': datetime.now(timezone.utc).isoformat(),
+                'interval_minutes': ANALYSIS_INTERVAL_MINUTES
+            }
+            Path(self.scan_history_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(self.scan_history_file, 'w') as f:
+                json.dump(scan_data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to record scan completion: {e}")
     
     def _validate_position_cap_on_startup(self) -> None:
         """Validate position count on startup and warn if cap is exceeded"""
@@ -445,6 +461,7 @@ Output JSON only:
             # Check trading hours
             if current_hour not in TRADING_HOURS_UTC:
                 logger.info(f"Outside trading hours (current: {current_hour} UTC)")
+                self._record_scan_completion()
                 return {"status": "skipped", "reason": "outside_trading_hours"}
             
             logger.info("\n" + "=" * 80)
@@ -468,6 +485,7 @@ Output JSON only:
 
             if not coins_data:
                 logger.warning("No coins met primary screen (EMA9/21 + RSI + breakout + BTC strength)")
+                self._record_scan_completion()
                 return {"status": "no_candidates"}
             
             # Check position capacity
@@ -734,6 +752,7 @@ Output JSON only:
             logger.info(f"✅ CYCLE COMPLETE: {selected_symbol} selected & executed")
             logger.info("=" * 80)
             
+            self._record_scan_completion()
             return {
                 "status": "completed",
                 "tier": "full_analysis",
