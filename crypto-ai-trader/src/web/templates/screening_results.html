@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Screening Results - SpringAI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <meta http-equiv="refresh" content="30">
+  <style>
+    .screening-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .screening-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 20px;
+    }
+    .screening-header h1 {
+      margin: 0;
+      color: #1f2937;
+    }
+    .screening-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-box {
+      background: #f3f4f6;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border-left: 3px solid #3b82f6;
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #1f2937;
+      margin-top: 4px;
+    }
+    .stat-passed { border-left-color: #10b981; }
+    .stat-failed { border-left-color: #ef4444; }
+    .stat-timestamp { border-left-color: #8b5cf6; }
+    
+    .coins-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .coin-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      transition: all 0.2s ease;
+    }
+    .coin-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-color: #d1d5db;
+    }
+    .coin-card.passed {
+      border-left: 4px solid #10b981;
+      background: #f0fdf4;
+    }
+    .coin-card.failed {
+      border-left: 4px solid #ef4444;
+      background: #fef2f2;
+    }
+    .coin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+    }
+    .coin-symbol {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #1f2937;
+    }
+    .coin-status {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .status-passed {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status-failed {
+      background: #fee2e2;
+      color: #7f1d1d;
+    }
+    .status-error {
+      background: #fef3c7;
+      color: #78350f;
+    }
+    .coin-price {
+      font-size: 1rem;
+      color: #6b7280;
+      margin-bottom: 12px;
+    }
+    
+    .filter-section {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .filter-name {
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+    .filter-details {
+      color: #6b7280;
+      font-family: 'Monaco', monospace;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .filter-passed {
+      color: #059669;
+      font-weight: 600;
+    }
+    .filter-failed {
+      color: #dc2626;
+      font-weight: 600;
+    }
+    .reason {
+      margin-top: 12px;
+      padding: 8px 12px;
+      background: #fef3c7;
+      border-left: 2px solid #f59e0b;
+      border-radius: 4px;
+      color: #78350f;
+      font-size: 0.9rem;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #6b7280;
+    }
+    .error-message {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #dc2626;
+    }
+    .back-button {
+      display: inline-block;
+      padding: 8px 16px;
+      background: #3b82f6;
+      color: white;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+    }
+    .back-button:hover {
+      background: #2563eb;
+    }
+  </style>
+</head>
+<body style="background: #f9fafb;">
+  <div class="screening-container">
+    <a href="{{ url_for('dashboard') }}" class="back-button">← Back to Dashboard</a>
+    
+    <div class="screening-header">
+      <h1>📊 Primary Screening Results</h1>
+      <div style="font-size: 0.9rem; color: #6b7280;">
+        Auto-refreshes every 30 seconds
+      </div>
+    </div>
+    
+    {% if results.error %}
+      <div class="error-message">
+        ⚠️ Error loading screening results: {{ results.error }}
+      </div>
+    {% elif results.message %}
+      <div style="background: #dbeafe; color: #1e40af; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+        ℹ️ {{ results.message }}
+      </div>
+    {% else %}
+      <!-- Statistics -->
+      <div class="screening-stats">
+        <div class="stat-box stat-timestamp">
+          <div class="stat-label">Last Scan</div>
+          <div class="stat-value" style="font-size: 0.9rem;">{{ results.timestamp[:19] if results.timestamp else 'N/A' }}</div>
+        </div>
+        <div class="stat-box stat-passed">
+          <div class="stat-label">Passed Screening</div>
+          <div class="stat-value">{{ results.passed }}</div>
+        </div>
+        <div class="stat-box stat-failed">
+          <div class="stat-label">Failed Screening</div>
+          <div class="stat-value">{{ results.failed }}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Total Evaluated</div>
+          <div class="stat-value">{{ results.total_coins_evaluated }}</div>
+        </div>
+      </div>
+      
+      <!-- Coins Grid -->
+      <div class="coins-grid">
+        {% for symbol, coin_data in results.coins.items() %}
+          <div class="coin-card {% if coin_data.status == 'passed' %}passed{% elif coin_data.status == 'failed' %}failed{% endif %}">
+            <div class="coin-header">
+              <div class="coin-symbol">{{ symbol }}</div>
+              <span class="coin-status status-{{ coin_data.status }}">{{ coin_data.status|upper }}</span>
+            </div>
+            
+            {% if coin_data.current_price %}
+              <div class="coin-price">💰 ${{ "%.4f"|format(coin_data.current_price) }}</div>
+            {% endif %}
+            
+            {% if coin_data.filters %}
+              <!-- EMA Filter -->
+              {% if coin_data.filters.ema %}
+                <div class="filter-section">
+                  <div class="filter-name">📈 EMA Filter</div>
+                  <div class="filter-details">
+                    <div class="{% if coin_data.filters.ema.passed %}filter-passed{% else %}filter-failed{% endif %}">
+                      {% if coin_data.filters.ema.passed %}✅ PASSED{% else %}❌ FAILED{% endif %}
+                    </div>
+                    <div style="margin-top: 4px; color: #6b7280;">
+                      Close: ${{ "%.2f"|format(coin_data.filters.ema.close_1h) }}<br>
+                      EMA9: ${{ "%.2f"|format(coin_data.filters.ema.ema9_1h) }}<br>
+                      EMA21: ${{ "%.2f"|format(coin_data.filters.ema.ema21_1h) }}<br>
+                      <em>(1H: C>E9>E21)</em>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+              
+              <!-- RSI Filter -->
+              {% if coin_data.filters.rsi %}
+                <div class="filter-section">
+                  <div class="filter-name">📊 RSI Filter</div>
+                  <div class="filter-details">
+                    <div class="{% if coin_data.filters.rsi.passed %}filter-passed{% else %}filter-failed{% endif %}">
+                      {% if coin_data.filters.rsi.passed %}✅ PASSED{% else %}❌ FAILED{% endif %}
+                    </div>
+                    <div style="margin-top: 4px; color: #6b7280;">
+                      1H RSI: {{ "%.1f"|format(coin_data.filters.rsi.rsi_1h) }}<br>
+                      4H RSI: {{ "%.1f"|format(coin_data.filters.rsi.rsi_4h) }}<br>
+                      <em>(Range: {{ coin_data.filters.rsi.min }}-{{ coin_data.filters.rsi.max }})</em>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+              
+              <!-- Breakout Filter -->
+              {% if coin_data.filters.breakout %}
+                <div class="filter-section">
+                  <div class="filter-name">🚀 Breakout Filter</div>
+                  <div class="filter-details">
+                    <div class="{% if coin_data.filters.breakout.passed %}filter-passed{% else %}filter-failed{% endif %}">
+                      {% if coin_data.filters.breakout.passed %}✅ PASSED{% else %}❌ FAILED{% endif %}
+                    </div>
+                    <div style="margin-top: 4px; color: #6b7280;">
+                      Above 20-bar high: {{ "Yes" if coin_data.filters.breakout.above_20bar_high else "No" }}<br>
+                      Above 50-bar high: {{ "Yes" if coin_data.filters.breakout.above_50bar_high else "No" }}
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+              
+              <!-- BTC Strength Filter -->
+              {% if coin_data.filters.btc_strength %}
+                <div class="filter-section">
+                  <div class="filter-name">💪 BTC Strength Filter</div>
+                  <div class="filter-details">
+                    <div class="{% if coin_data.filters.btc_strength.passed %}filter-passed{% else %}filter-failed{% endif %}">
+                      {% if coin_data.filters.btc_strength.passed %}✅ PASSED{% else %}❌ FAILED{% endif %}
+                    </div>
+                    <div style="margin-top: 4px; color: #6b7280;">
+                      Coin 1H: {{ "%.2f"|format(coin_data.filters.btc_strength.coin_change_1h) }}% vs BTC: {{ "%.2f"|format(coin_data.filters.btc_strength.btc_change_1h) }}%<br>
+                      Coin 4H: {{ "%.2f"|format(coin_data.filters.btc_strength.coin_change_4h) }}% vs BTC: {{ "%.2f"|format(coin_data.filters.btc_strength.btc_change_4h) }}%
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+            {% endif %}
+            
+            {% if coin_data.reason %}
+              <div class="reason">
+                <strong>Why Failed:</strong> {{ coin_data.reason }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  
+  <script>
+    // Auto-refresh the page to get latest screening results
+    console.log('Screening results page loaded. Will auto-refresh every 30 seconds.');
+  </script>
+</body>
+</html>

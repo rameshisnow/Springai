@@ -406,6 +406,33 @@ def _save_trading_mode(enable_live: bool):
         print(f"Error saving trading mode: {e}")
 
 
+def _load_screening_results() -> Dict:
+    """Load the latest screening results from JSON file"""
+    try:
+        screening_file = Path(config.DATA_DIR) / "screening_results.json"
+        if not screening_file.exists():
+            return {'message': 'No screening results yet. First scan pending...'}
+        with screening_file.open('r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading screening results: {e}")
+        return {'error': str(e)}
+
+
+@app.route("/api/screening_results")
+def api_screening_results():
+    """API endpoint to fetch latest screening results"""
+    results = _load_screening_results()
+    return jsonify(results)
+
+
+@app.route("/screening")
+def screening_results_page():
+    """Render screening results page"""
+    results = _load_screening_results()
+    return render_template("screening_results.html", results=results)
+
+
 if __name__ == "__main__":
     host = config.SERVER_HOST or "0.0.0.0"
     port = config.SERVER_PORT or 8080
