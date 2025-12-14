@@ -392,6 +392,7 @@ class SignalOrchestrator:
             import json
             from pathlib import Path
             screening_file = "data/screening_results.json"
+            
             results_summary = {
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'total_coins_evaluated': len(screening_details),
@@ -400,8 +401,11 @@ class SignalOrchestrator:
                 'coins': screening_details
             }
             Path(screening_file).parent.mkdir(parents=True, exist_ok=True)
-            with open(screening_file, 'w') as f:
-                json.dump(results_summary, f, indent=2)
+            
+            # Write with ensure_ascii=False and proper encoding
+            with open(screening_file, 'w', encoding='utf-8') as f:
+                json.dump(results_summary, f, indent=2, ensure_ascii=True, default=str)
+            
             logger.info(f"💾 Screening details saved to {screening_file}")
         except Exception as e:
             logger.error(f"Failed to save screening results: {e}")
