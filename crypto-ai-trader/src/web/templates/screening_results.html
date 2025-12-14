@@ -78,6 +78,10 @@
       border-left: 4px solid #ef4444;
       background: #fef2f2;
     }
+    .coin-card.skipped {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+    }
     .coin-header {
       display: flex;
       justify-content: space-between;
@@ -104,6 +108,10 @@
     .status-failed {
       background: #fee2e2;
       color: #7f1d1d;
+    }
+    .status-skipped {
+      background: #fed7aa;
+      color: #92400e;
     }
     .status-error {
       background: #fef3c7;
@@ -210,22 +218,26 @@
         </div>
         <div class="stat-box stat-passed">
           <div class="stat-label">Passed Screening</div>
-          <div class="stat-value">{{ results.passed }}</div>
+          <div class="stat-value">{{ results.evaluation_summary.passed if results.evaluation_summary else results.passed }}</div>
         </div>
         <div class="stat-box stat-failed">
           <div class="stat-label">Failed Screening</div>
-          <div class="stat-value">{{ results.failed }}</div>
+          <div class="stat-value">{{ results.evaluation_summary.failed if results.evaluation_summary else results.failed }}</div>
+        </div>
+        <div class="stat-box" style="border-left-color: #f59e0b;">
+          <div class="stat-label">Skipped (No Data)</div>
+          <div class="stat-value">{{ results.evaluation_summary.skipped if results.evaluation_summary else 0 }}</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Total Evaluated</div>
-          <div class="stat-value">{{ results.total_coins_evaluated }}</div>
+          <div class="stat-label">Total Attempted</div>
+          <div class="stat-value">{{ results.evaluation_summary.total_coins_attempted if results.evaluation_summary else results.total_coins_evaluated }}</div>
         </div>
       </div>
       
       <!-- Coins Grid -->
       <div class="coins-grid">
         {% for symbol, coin_data in results.coins.items() %}
-          <div class="coin-card {% if coin_data.status == 'passed' %}passed{% elif coin_data.status == 'failed' %}failed{% endif %}">
+          <div class="coin-card {% if coin_data.status == 'passed' %}passed{% elif coin_data.status == 'failed' %}failed{% elif coin_data.status == 'skipped' %}skipped{% endif %}">
             <div class="coin-header">
               <div class="coin-symbol">{{ symbol }}</div>
               <span class="coin-status status-{{ coin_data.status }}">{{ coin_data.status|upper }}</span>

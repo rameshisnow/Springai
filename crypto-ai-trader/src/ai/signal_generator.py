@@ -275,6 +275,7 @@ class SignalOrchestrator:
             btc_change_4h = ((btc_4h.iloc[-1]['close'] / btc_4h.iloc[-2]['close']) - 1) * 100 if len(btc_4h) >= 2 else 0.0
 
         logger.info(f"📊 BTC benchmark: 1H={btc_change_1h:+.2f}%, 4H={btc_change_4h:+.2f}%")
+        logger.info(f"📋 Evaluating {len(top_coins)} coins from top 100 by volume...")
 
         for idx, coin in enumerate(top_coins, 1):
             base = coin.get('symbol', '').upper()
@@ -284,7 +285,15 @@ class SignalOrchestrator:
                 df_4h = await binance_fetcher.get_klines(symbol=symbol, interval='4h', limit=120)
 
                 if df_1h.empty or df_4h.empty or len(df_1h) < 30 or len(df_4h) < 10:
-                    screening_details[symbol] = {'status': 'failed', 'reason': 'Insufficient data'}
+                    reason = "Insufficient data"
+                    if df_1h.empty or df_4h.empty:
+                        reason = "No candle data available (may be delisted or inactive)"
+                    elif len(df_1h) < 30:
+                        reason = f"Insufficient 1H history ({len(df_1h)} bars, need 30)"
+                    elif len(df_4h) < 10:
+                        reason = f"Insufficient 4H history ({len(df_4h)} bars, need 10)"
+                    screening_details[symbol] = {'status': 'skipped', 'reason': reason}
+                    logger.debug(f"   ⊘ {symbol}: {reason}")
                     continue
 
                 df_1h = compute_all_indicators(df_1h)
@@ -393,11 +402,21 @@ class SignalOrchestrator:
             from pathlib import Path
             screening_file = "data/screening_results.json"
             
+            # Count coins by status
+            passed_count = len(filtered)
+            failed_count = sum(1 for cd in screening_details.values() if cd.get('status') == 'failed')
+            skipped_count = sum(1 for cd in screening_details.values() if cd.get('status') == 'skipped')
+            error_count = sum(1 for cd in screening_details.values() if cd.get('status') == 'error')
+            
             results_summary = {
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'total_coins_evaluated': len(screening_details),
-                'passed': len(filtered),
-                'failed': len(screening_details) - len(filtered),
+                'evaluation_summary': {
+                    'total_coins_attempted': len(screening_details),
+                    'passed': passed_count,
+                    'failed': failed_count,
+                    'skipped': skipped_count,
+                    'error': error_count,
+                },
                 'coins': screening_details
             }
             Path(screening_file).parent.mkdir(parents=True, exist_ok=True)
@@ -406,7 +425,8 @@ class SignalOrchestrator:
             with open(screening_file, 'w', encoding='utf-8') as f:
                 json.dump(results_summary, f, indent=2, ensure_ascii=True, default=str)
             
-            logger.info(f"💾 Screening details saved to {screening_file}")
+            logger.info(f"💾 Screening complete: {passed_count} passed, {failed_count} failed, {skipped_count} skipped, {error_count} errors")
+            logger.info(f"💾 Results saved to {screening_file}")
         except Exception as e:
             logger.error(f"Failed to save screening results: {e}")
 
