@@ -27,13 +27,13 @@ MAX_OPEN_POSITIONS = 2  # ✅ REDUCED from 3 to 2 - Oracle Mode works best with 
 # Reason: High conviction + low frequency trades
 # More positions = higher correlation risk + AI confidence degrades
 MIN_POSITION_VALUE_USD = 5.0  # ✅ Minimum position value in USD (Binance spot min ~$5)
-MIN_TRADING_VOLUME_USD = 10_000_000  # Min $10M 24h volume
+MIN_TRADING_VOLUME_USD = 5_000_000  # ✅ LOWERED from $10M to $5M to include mid-caps (gets ~50-80 coins)
 MIN_MARKET_CAP_USD = 100_000_000  # Min $100M market cap
 MIN_COIN_AGE_DAYS = 90  # Coin must exist for 90+ days
 
 # ==================== SCREENING (PRE-CLAUDE) ====================
 
-SCREEN_TOP_N = 100  # Analyze top 100 by volume
+SCREEN_TOP_N = 200  # ✅ INCREASED from 100 to 200 - more coins evaluated
 SCREEN_BREAKOUT_WINDOW = 50  # Lookback for breakout high (1H)
 SCREEN_RSI_MIN = 55
 SCREEN_RSI_MAX = 70
