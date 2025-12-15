@@ -334,15 +334,15 @@ class SignalOrchestrator:
                 breakout_ok = is_breakout
                 strength_ok = rel_strength
 
-                # Track screening result
+                # Track screening result (convert numpy/pandas bools to Python bool for JSON serialization)
                 screening_details[symbol] = {
                     'status': 'passed' if (ema_ok and rsi_ok and breakout_ok and strength_ok) else 'failed',
                     'current_price': round(close_1h, 4),
                     'filters': {
-                        'ema': {'passed': ema_ok, 'close_1h': round(close_1h, 4), 'ema9_1h': round(ema9_1h, 4), 'ema21_1h': round(ema21_1h, 4), 'close_4h': round(close_4h, 4), 'ema21_4h': round(ema21_4h, 4)},
-                        'rsi': {'passed': rsi_ok, 'rsi_1h': round(rsi_1h, 2), 'rsi_4h': round(rsi_4h, 2), 'min': SCREEN_RSI_MIN, 'max': SCREEN_RSI_MAX},
-                        'breakout': {'passed': breakout_ok, 'is_breakout': is_breakout, 'above_20bar_high': breakout_20, 'above_50bar_high': breakout_n},
-                        'btc_strength': {'passed': strength_ok, 'coin_change_1h': round(change_1h, 2), 'btc_change_1h': round(btc_change_1h, 2), 'coin_change_4h': round(change_4h, 2), 'btc_change_4h': round(btc_change_4h, 2)},
+                        'ema': {'passed': bool(ema_ok), 'close_1h': round(close_1h, 4), 'ema9_1h': round(ema9_1h, 4), 'ema21_1h': round(ema21_1h, 4), 'close_4h': round(close_4h, 4), 'ema21_4h': round(ema21_4h, 4)},
+                        'rsi': {'passed': bool(rsi_ok), 'rsi_1h': round(rsi_1h, 2), 'rsi_4h': round(rsi_4h, 2), 'min': SCREEN_RSI_MIN, 'max': SCREEN_RSI_MAX},
+                        'breakout': {'passed': bool(breakout_ok), 'is_breakout': bool(is_breakout), 'above_20bar_high': bool(breakout_20), 'above_50bar_high': bool(breakout_n)},
+                        'btc_strength': {'passed': bool(strength_ok), 'coin_change_1h': round(change_1h, 2), 'btc_change_1h': round(btc_change_1h, 2), 'coin_change_4h': round(change_4h, 2), 'btc_change_4h': round(btc_change_4h, 2)},
                     }
                 }
 
