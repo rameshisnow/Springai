@@ -30,6 +30,7 @@ from src.config.constants import (
     DRY_RUN_ENABLED,
     MAX_OPEN_POSITIONS,
     SCREEN_TOP_N,
+    SCREEN_MAX_CANDIDATES,
     SCREEN_BREAKOUT_WINDOW,
     SCREEN_RSI_MIN,
     SCREEN_RSI_MAX,
@@ -327,12 +328,51 @@ class SignalOrchestrator:
                 atr_1h = float(last_1h.get('atr', 0))
                 atr_percent = (atr_1h / close_1h) * 100 if close_1h > 0 else 0.0
                 above_ema200 = close_1h > float(last_1h.get('ema_200', close_1h))
-
+                
+                # Calculate volume spike
+                avg_volume = volume_24h / 24
+                volume_spike = volume_1h / max(avg_volume, 0.0001)
+                
                 # Primary filters
                 ema_ok = (close_1h > ema9_1h > ema21_1h) and (close_4h > ema21_4h)
                 rsi_ok = SCREEN_RSI_MIN <= rsi_1h <= SCREEN_RSI_MAX and SCREEN_RSI_MIN <= rsi_4h <= SCREEN_RSI_MAX
                 breakout_ok = is_breakout
                 strength_ok = rel_strength
+                
+                # ✅ NEW: Calculate boolean filter flags for Claude
+                filters = {
+                    'breakout_50bar': bool(breakout_n),  # True if 50-bar breakout
+                    'breakout_20bar': bool(breakout_20 and not breakout_n),  # True if only 20-bar
+                    'rsi_early_range': bool(55 <= rsi_1h <= 65),  # Early in RSI range
+                    'rsi_mid_range': bool(60 <= rsi_1h <= 70),  # Mid RSI range
+                    'volume_spike_2x': bool(volume_spike >= 2.0),  # 2x+ volume
+                    'volume_spike_1_5x': bool(1.5 <= volume_spike < 2.0),  # 1.5-2x volume
+                    'btc_outperform_1h': bool(change_1h > btc_change_1h),
+                    'btc_outperform_4h': bool(change_4h > btc_change_4h),
+                    'ema_spread_strong': bool((ema9_1h - ema21_1h) / ema21_1h > 0.015),  # >1.5% spread
+                    'composite_score': 0.0,  # Will calculate below
+                }
+                
+                # Calculate composite score for ranking
+                score = 0.0
+                if filters['breakout_50bar']:
+                    score += 3.0  # 50-bar breakout worth more
+                elif filters['breakout_20bar']:
+                    score += 1.5
+                if filters['rsi_early_range']:
+                    score += 2.0  # Early RSI position better
+                elif filters['rsi_mid_range']:
+                    score += 1.0
+                if filters['volume_spike_2x']:
+                    score += 2.0
+                elif filters['volume_spike_1_5x']:
+                    score += 1.0
+                if filters['ema_spread_strong']:
+                    score += 1.0
+                if rel_strength:
+                    score += 1.0
+                
+                filters['composite_score'] = score
 
                 # Track screening result (convert numpy/pandas bools to Python bool for JSON serialization)
                 screening_details[symbol] = {
@@ -366,6 +406,7 @@ class SignalOrchestrator:
                 filtered.append({
                     'symbol': symbol,
                     'current_price': close_1h,
+                    'filters': filters,  # ✅ NEW: Pass pre-calculated boolean flags
                     'indicators': {
                         'change_1h': change_1h,
                         'change_4h': change_4h,
@@ -426,8 +467,15 @@ class SignalOrchestrator:
         except Exception as e:
             logger.error(f"Failed to save screening results: {e}")
 
-        logger.info(f"Primary screen complete: {len(filtered)} coin(s) qualified")
-        return filtered
+        # ✅ NEW: Sort by composite score and limit to top SCREEN_MAX_CANDIDATES
+        filtered_sorted = sorted(filtered, key=lambda x: x.get('filters', {}).get('composite_score', 0), reverse=True)
+        filtered_top = filtered_sorted[:SCREEN_MAX_CANDIDATES]
+        
+        logger.info(f"Primary screen complete: {len(filtered)} qualified, passing top {len(filtered_top)} to Claude")
+        if len(filtered_top) < len(filtered):
+            logger.info(f"  Filtered out {len(filtered) - len(filtered_top)} lower-scored candidates")
+        
+        return filtered_top
     
     async def _check_exceptional_event(self, coins_data: List[Dict]) -> Optional[Dict]:
         """
@@ -648,10 +696,11 @@ Output JSON only:
                 signal_monitor.add_signal({
                     'symbol': 'MARKET',
                     'signal_type': 'NO_TRADE',
-                    'confidence': 0,
+                    'edge': oracle_decision.get('edge', 'WEAK'),
+                    'confidence': 0,  # Keeping for backward compat
                     'stop_loss': 0,
                     'take_profit': [],
-                    'rationale': oracle_decision.get('entry_reason', 'No quality setup'),
+                    'rationale': oracle_decision.get('reason', 'No quality setup'),
                     'current_price': 0,
                     'indicators': {},
                     'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -662,6 +711,7 @@ Output JSON only:
                     "tier": "full_analysis",
                     "coins_analyzed": len(coins_data),
                     "oracle_decision": "NO_TRADE",
+                    "oracle_edge": oracle_decision.get('edge', 'WEAK'),
                 }
             
             # Extract selected coin
@@ -677,9 +727,31 @@ Output JSON only:
                 logger.error(f"Selected coin {selected_symbol} not in data")
                 return {"status": "error", "reason": "Coin data missing"}
             
+            # Validate edge threshold
+            edge = oracle_decision.get('edge', 'WEAK').upper()
+            from src.config.constants import MIN_EDGE_TO_TRADE
+            
+            if edge not in ['STRONG', 'MODERATE']:
+                logger.warning(f"Oracle returned {edge} edge - not trading WEAK setups")
+                return {
+                    "status": "completed",
+                    "oracle_decision": "NO_TRADE",
+                    "oracle_edge": edge,
+                    "reason": f"Edge {edge} below threshold {MIN_EDGE_TO_TRADE}"
+                }
+            
+            if MIN_EDGE_TO_TRADE == "STRONG" and edge == "MODERATE":
+                logger.warning(f"Oracle returned MODERATE edge but MIN_EDGE_TO_TRADE=STRONG - skipping")
+                return {
+                    "status": "completed",
+                    "oracle_decision": "NO_TRADE",
+                    "oracle_edge": edge,
+                    "reason": "MODERATE edge below STRONG threshold"
+                }
+            
             logger.info(f"\n🎯 Oracle selected: {selected_symbol}")
-            logger.info(f"   Confidence: {oracle_decision.get('confidence')}%")
-            logger.info(f"   Reason: {oracle_decision.get('entry_reason')}")
+            logger.info(f"   Edge: {edge}")
+            logger.info(f"   Reason: {oracle_decision.get('reason')}")
             
             # ===================================================================
             # TIER 3: Trade Execution (strict validation before execution)
@@ -712,7 +784,8 @@ Output JSON only:
                 signal_monitor.add_signal({
                     'symbol': selected_symbol,
                     'signal_type': 'REJECTED',
-                    'confidence': oracle_decision.get('confidence', 0),
+                    'edge': edge,
+                    'confidence': 0,  # Keeping for backward compat
                     'stop_loss': 0,
                     'take_profit': [],
                     'rationale': f"Rejected: {rejection_reason}",
@@ -725,6 +798,7 @@ Output JSON only:
                     "status": "rejected",
                     "tier": "full_analysis",
                     "rejection_reason": rejection_reason,
+                    "oracle_edge": edge,
                 }
             
             logger.info("✅ All safety gates PASSED")
@@ -774,11 +848,12 @@ Output JSON only:
             signal_monitor.add_signal({
                 'symbol': selected_symbol,
                 'signal_type': 'BUY',
-                'confidence': oracle_decision.get('confidence'),
+                'edge': edge,
+                'confidence': 0,  # Keeping for backward compat
                 'stop_loss': stop_loss,
                 'take_profit': [tp['price'] for tp in take_profits],
                 'claude_raw_tp': claude_take_profits,  # Store Claude's raw response
-                'rationale': oracle_decision.get('entry_reason'),
+                'rationale': oracle_decision.get('reason'),
                 'current_price': current_price,
                 'indicators': indicators,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -813,7 +888,7 @@ Output JSON only:
                     entry_price=current_price,
                     stop_loss_price=stop_loss,
                     take_profit_levels=[tp['price'] for tp in take_profits],
-                    confidence=oracle_decision.get('confidence', 0) / 100,
+                    confidence=0.75 if edge == "STRONG" else 0.60,  # Map edge to confidence for backward compat
                 )
                 
                 if order_result:

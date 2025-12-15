@@ -25,71 +25,75 @@ class PromptTemplates:
     @staticmethod
     def batch_oracle_prompt(coins_data: List[Dict[str, Any]]) -> str:
         """
-        OPTIMIZED: Oracle prompt for batch analysis with minimal token usage
-        Target: ≤500 tokens total (prompt + data + response)
+        OPTIMIZED V2: Oracle prompt with pre-validated boolean filters
+        Target: ≤200 tokens (down from 500) - 60% token reduction
+        
+        Coins arrive PRE-FILTERED by code:
+        - EMA9 > EMA21 (bullish trend) ✅
+        - RSI 55-70 (not overbought) ✅  
+        - Breakout confirmed (20 or 50-bar) ✅
+        - BTC outperformance ✅
+        
+        Claude's job: RANK best relative setup, assign edge category
         
         Args:
-            coins_data: List of dicts with ONLY essential fields
+            coins_data: List of QUALIFIED coins with boolean filter flags
         
         Returns:
-            Minimal, constrained prompt
+            Minimal prompt for ranking only
         """
-        # Build ultra-compact market snapshot (≤300 tokens for 20 coins)
-        market_snapshot = []
-        for idx, coin in enumerate(coins_data[:20], 1):
+        # Build ultra-compact qualified snapshot (≤150 tokens for 8 coins)
+        qualified_snapshot = []
+        for idx, coin in enumerate(coins_data[:8], 1):  # Max 8 candidates
             symbol = coin['symbol']
             price = coin['current_price']
-            ind = coin['indicators']
+            filters = coin.get('filters', {})  # Pre-calculated boolean flags
             
-            # Format price based on value
+            # Format price
             price_str = f"${price:.4f}" if price < 1 else f"${price:.2f}"
             
-            # ONLY essential metrics (no fluff)
+            # Compact filter status display
+            breakout_type = "50BAR" if filters.get('breakout_50bar') else "20BAR"
+            volume_strength = "2x+" if filters.get('volume_spike_2x') else "1.5x"
+            rsi_position = "EARLY" if filters.get('rsi_early_range') else "MID"
+            
             snapshot = (
                 f"{idx}. {symbol} {price_str} | "
-                f"1H:{ind.get('change_1h', 0):+.1f}% 4H:{ind.get('change_4h', 0):+.1f}% 24H:{ind.get('change_24h', 0):+.1f}% | "
-                f"Vol:{ind.get('volume_24h', 0)/1e6:.0f}M | "
-                f"RSI:{ind.get('rsi', 50):.0f} ATR:{ind.get('atr_percent', 0):.1f}% | "
-                f"Trend:{'↑' if ind.get('above_ema200', False) else '↓'}"
+                f"✅{breakout_type} ✅RSI_{rsi_position} ✅VOL_{volume_strength} ✅BTC_OK | "
+                f"Score:{filters.get('composite_score', 0):.1f}"
             )
-            market_snapshot.append(snapshot)
+            qualified_snapshot.append(snapshot)
         
-        snapshot_text = "\n".join(market_snapshot)
+        snapshot_text = "\n".join(qualified_snapshot)
         
         return f"""You are a quantitative crypto trading oracle.
 
-Objective:
-From the provided market snapshot, select at most ONE coin
-for a LONG trade expected to outperform others over the next 1–4 hours.
+All coins below PASSED hard filters (code-validated):
+- EMA trend: price > EMA9 > EMA21 ✅
+- RSI range: 55-70 (not overbought) ✅
+- Breakout: Above 20 or 50-bar high ✅
+- BTC strength: Outperforming Bitcoin ✅
 
-Market Snapshot:
+Qualified Candidates:
 {snapshot_text}
 
-Selection Rules:
-- Choose the BEST relative opportunity, not just a valid one
-- Prefer increasing momentum + expanding volume
-- RSI must be between 45 and 72
-- Reject coins that already made a sharp move (>4% in last 4H)
-- Reject low liquidity (<$20M 24H volume)
-- If no clear superior setup exists → return NO_TRADE
+Your Task:
+Select the ONE coin with the STRONGEST relative edge for a 1-4 hour LONG trade.
 
-Trend Rule:
-- Trend = bullish only if price is above EMA200 on 1H
-- If trend alignment is unclear, be conservative
-
-Confidence Scoring:
-- 80–100: Exceptional setup, strong relative edge
-- 65–79: Good setup, acceptable risk
-- <65: Do NOT trade
-
-Output (JSON ONLY - no explanations):
-{{"action": "BUY" or "NO_TRADE", "symbol": "BTCUSDT" or null, "confidence": 0-100, "entry_reason": "max 20 words", "risk_note": "max 15 words"}}
+Edge Classification:
+STRONG = 50-bar breakout + EARLY RSI (55-65) + 2x+ volume spike + high composite score
+MODERATE = 20-bar breakout + MID RSI (60-70) + 1.5x volume + acceptable score
+WEAK = Passed filters but lacks conviction → return NO_TRADE
 
 Rules:
-- Return valid JSON only
-- Do not explain your reasoning
-- Do not include analysis text
-- Do not hallucinate missing data"""
+- If no coin qualifies as STRONG or MODERATE → return NO_TRADE
+- Prefer STRONG over MODERATE
+- Consider composite score as tiebreaker
+
+Output (JSON ONLY):
+{{"action": "BUY" or "NO_TRADE", "symbol": "BTCUSDT" or null, "edge": "STRONG" or "MODERATE" or "WEAK", "reason": "max 15 words"}}
+
+CRITICAL: Return valid JSON only, no explanations."""
     
     @staticmethod
     def technical_confirmation_prompt(symbol: str, price_data: str) -> str:
@@ -438,14 +442,14 @@ class AIAnalyzer:
         coins_data: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
-        OPTIMIZED: Oracle-style batch analysis (≤500 tokens total)
-        Selects at most ONE high-quality trade per scan
+        OPTIMIZED V2: Oracle-style batch analysis with edge categories
+        Target: ≤300 tokens total (down from 500)
         
         Args:
-            coins_data: List of dicts with essential fields only
+            coins_data: List of PRE-QUALIFIED coins with boolean filter flags
         
         Returns:
-            Single trade recommendation or NO_TRADE
+            Single trade recommendation with edge category or NO_TRADE
         """
         try:
             prompt = PromptTemplates.batch_oracle_prompt(coins_data)
@@ -456,7 +460,7 @@ class AIAnalyzer:
             
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=200,  # Minimal response needed
+                max_tokens=150,  # Reduced from 200 (simpler response)
                 temperature=0.3,  # Lower = more consistent
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -481,8 +485,14 @@ class AIAnalyzer:
                 ai_logger.warning(f"Invalid action: {decision.get('action')}")
                 return self._empty_oracle_decision()
             
+            # Validate edge category
+            edge = decision.get('edge', '').upper()
+            if edge and edge not in ['STRONG', 'MODERATE', 'WEAK']:
+                ai_logger.warning(f"Invalid edge category: {edge}, defaulting to WEAK")
+                decision['edge'] = 'WEAK'
+            
             ai_logger.info(f"✅ Oracle decision: {decision.get('action')} "
-                          f"({decision.get('symbol', 'N/A')} @ {decision.get('confidence', 0)}%)")
+                          f"({decision.get('symbol', 'N/A')} @ {decision.get('edge', 'UNKNOWN')} edge)")
             
             return decision
         
@@ -563,9 +573,8 @@ class AIAnalyzer:
         return {
             "action": "NO_TRADE",
             "symbol": None,
-            "confidence": 0,
-            "entry_reason": "Analysis failed",
-            "risk_note": "Error state"
+            "edge": "WEAK",
+            "reason": "Analysis failed"
         }
     
     @staticmethod

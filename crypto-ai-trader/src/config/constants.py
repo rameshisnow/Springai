@@ -34,6 +34,7 @@ MIN_COIN_AGE_DAYS = 90  # Coin must exist for 90+ days
 # ==================== SCREENING (PRE-CLAUDE) ====================
 
 SCREEN_TOP_N = 200  # ✅ INCREASED from 100 to 200 - more coins evaluated
+SCREEN_MAX_CANDIDATES = 8  # ✅ Pass top 8 qualified coins to Claude (sweet spot for ranking)
 SCREEN_BREAKOUT_WINDOW = 50  # Lookback for breakout high (1H)
 SCREEN_RSI_MIN = 55
 SCREEN_RSI_MAX = 70
@@ -61,19 +62,43 @@ PREFERRED_TIMEFRAME = "1h"  # Primary trading timeframe (1h for intraday, 4h for
 
 # ==================== AI VALIDATION & FILTERING ====================
 
-# Adaptive confidence thresholds (market-aware)
-MIN_CONFIDENCE_TO_TRADE = 70  # ✅ Base: 70% in normal markets
-MIN_CONFIDENCE_TRENDING = 65  # Lower threshold in strong trending markets
-MIN_CONFIDENCE_SIDEWAYS = 75  # Higher threshold in choppy/sideways markets
-MIN_CONFIDENCE_VOLATILE = 70  # Standard threshold in high volatility
+# Edge-based system (replaces uncalibrated confidence scores)
+# STRONG: 50-bar breakout + early RSI (55-65) + 2x+ volume + strong BTC correlation
+# MODERATE: 20-bar breakout + RSI (55-70) + 1.5x+ volume + positive BTC correlation  
+# WEAK: Passed filters but doesn't meet MODERATE criteria (skip these)
+MIN_EDGE_TO_TRADE = "STRONG"  # ✅ Trade STRONG edge only during monitoring phase
+# After 20 trades: If STRONG avg_R > 1.2 → can add MODERATE
+
+EDGE_CATEGORIES = {
+    "STRONG": {
+        "description": "Exceptional setup with high conviction",
+        "expected_win_rate": 0.65,  # Target 65%+ (will calibrate after 20 trades)
+        "expected_avg_R": 1.5,       # Target 1.5R average (will calibrate)
+    },
+    "MODERATE": {
+        "description": "Good setup with acceptable risk",
+        "expected_win_rate": 0.55,  # Target 55%+ (will calibrate)
+        "expected_avg_R": 0.8,       # Target 0.8R average (will calibrate)
+    },
+    "WEAK": {
+        "description": "Passed filters but lacks conviction - DO NOT TRADE",
+        "skip": True,
+    }
+}
+
+# DEPRECATED (keeping for backward compatibility until fully removed)
+MIN_CONFIDENCE_TO_TRADE = 70  # ⚠️ DEPRECATED: Use MIN_EDGE_TO_TRADE instead
+MIN_CONFIDENCE_TRENDING = 65  # ⚠️ DEPRECATED
+MIN_CONFIDENCE_SIDEWAYS = 75  # ⚠️ DEPRECATED
+MIN_CONFIDENCE_VOLATILE = 70  # ⚠️ DEPRECATED
 
 # Position replacement (when positions are full)
-ALLOW_POSITION_REPLACEMENT = False  # ⚠️ EXPERIMENTAL: Replace weak positions with strong signals
-MIN_CONFIDENCE_FOR_REPLACEMENT = 80  # New signal must be ≥80% to replace
-MAX_CONFIDENCE_TO_REPLACE = 50  # Only replace positions with ≤50% original confidence
-REPLACEMENT_MIN_IMPROVEMENT = 15  # New signal must be +15% better than old
+ALLOW_POSITION_REPLACEMENT = False  # ⚠️ EXPERIMENTAL: Keep OFF until edge system calibrated
+MIN_EDGE_FOR_REPLACEMENT = "STRONG"  # New signal must be STRONG to replace
+MAX_EDGE_TO_REPLACE = "WEAK"  # Only replace WEAK positions
+REPLACEMENT_MIN_IMPROVEMENT = 15  # ⚠️ DEPRECATED (edge-based now)
 
-MIN_CONSENSUS_AGREEMENTS = 2  # Require 2 out of 3 prompt variations to agree
+MIN_CONSENSUS_AGREEMENTS = 2  # ⚠️ DEPRECATED: Consensus mode removed for token efficiency
 HALLUCINATION_CHECK_ENABLED = True  # Cross-validate data
 
 # ==================== SAFETY CIRCUITS & LIMITS ====================
