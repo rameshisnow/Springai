@@ -39,6 +39,7 @@ class Position:
         entry_time: datetime = None,
         stop_loss: float = None,
         take_profit_targets: list = None,
+        status: str = "active",  # "active" or "dust" - dust positions don't count toward capacity
     ):
         self.symbol = symbol
         self.entry_price = entry_price
@@ -46,6 +47,7 @@ class Position:
         self.entry_time = entry_time or datetime.now()
         self.stop_loss = stop_loss
         self.take_profit_targets = take_profit_targets or []
+        self.status = status  # Track whether position is active or dust
         self.closed = False
         self.exit_price = None
         self.exit_time = None
@@ -72,12 +74,13 @@ class Position:
         return pnl, pnl_percent
     
     def close(self, exit_price: float, exit_time: datetime = None):
-        """Close position"""
+        """Close position and mark as dust (no longer counts toward capacity)"""
         self.exit_price = exit_price
         self.exit_time = exit_time or datetime.now()
         self.pnl = (exit_price - self.entry_price) * self.quantity
         self.pnl_percent = ((exit_price - self.entry_price) / self.entry_price) * 100
         self.closed = True
+        self.status = "dust"  # Mark as dust so it doesn't count toward capacity limits
 
 
 class RiskManager:
@@ -239,6 +242,7 @@ class RiskManager:
                     'take_profit_targets': position.take_profit_targets,
                     'current_price': position.current_price,
                     'last_price_update': position.last_price_update.isoformat() if position.last_price_update else None,
+                    'status': position.status,  # Save status: active or dust
                 }
             
             os.makedirs(os.path.dirname(self.positions_file), exist_ok=True)
@@ -278,6 +282,7 @@ class RiskManager:
                         entry_time=entry_time,
                         stop_loss=stop_loss,
                         take_profit_targets=pos_data['take_profit_targets'],
+                        status=pos_data.get('status', 'active'),  # Load status: active or dust
                     )
                     
                     # Restore current price and last update time

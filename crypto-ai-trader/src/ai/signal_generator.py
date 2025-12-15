@@ -105,25 +105,21 @@ class SignalOrchestrator:
             logger.error(f"Error validating position cap: {e}")
     
     def _get_position_count(self) -> int:
-        """Get current number of open positions (excluding dust positions < $1)"""
+        """Get current number of ACTIVE positions (excluding dust positions marked as closed/dust)"""
         if not hasattr(risk_manager, 'positions'):
             return 0
         
-        meaningful_positions = 0
+        active_positions = 0
         for symbol, position in risk_manager.positions.items():
             try:
-                # Get current price to calculate position value
-                current_price = binance_fetcher.get_current_price(symbol) if hasattr(binance_fetcher, 'get_current_price') else position.entry_price
-                position_value = position.quantity * current_price
-                
-                # Only count positions with value >= $1 (filter dust)
-                if position_value >= 1.0:
-                    meaningful_positions += 1
+                # Only count positions with status="active" (dust/closed positions don't count)
+                if position.status == "active":
+                    active_positions += 1
             except Exception:
-                # If we can't get price, count it to be safe
-                meaningful_positions += 1
+                # If status field doesn't exist, assume active (for backward compatibility)
+                active_positions += 1
         
-        return meaningful_positions
+        return active_positions
     
     def _is_capacity_available(self) -> bool:
         """Check if we have capacity for new positions (excluding dust)"""
