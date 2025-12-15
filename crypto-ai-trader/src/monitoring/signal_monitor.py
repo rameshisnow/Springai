@@ -48,10 +48,17 @@ class SignalMonitor:
         
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         
-        recent = [
-            s for s in signals
-            if datetime.fromisoformat(s['timestamp']) > cutoff
-        ]
+        recent = []
+        for s in signals:
+            try:
+                ts = datetime.fromisoformat(s['timestamp'])
+                # Make timestamp timezone-aware if it isn't
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts > cutoff:
+                    recent.append(s)
+            except (KeyError, ValueError):
+                continue
         
         # Sort by timestamp descending
         recent.sort(key=lambda x: x['timestamp'], reverse=True)
@@ -59,34 +66,47 @@ class SignalMonitor:
         return recent[:limit]
     
     def get_signal_stats(self, hours: int = 24) -> Dict[str, Any]:
-        """Get statistics about recent signals"""
+        """Get statistics about recent signals (supports both edge and confidence)"""
         signals = self.get_recent_signals(hours=hours)
         
         if not signals:
             return {
                 'total': 0,
-                'buy_signals': 0,
-                'sell_signals': 0,
-                'hold_signals': 0,
+                'buy': 0,
+                'sell': 0,
+                'hold': 0,
                 'avg_confidence': 0,
                 'high_confidence': 0,
+                'strong_edge': 0,
+                'moderate_edge': 0,
+                'weak_edge': 0,
             }
         
         buy_count = sum(1 for s in signals if s.get('signal_type') == 'BUY')
         sell_count = sum(1 for s in signals if s.get('signal_type') == 'SELL')
         hold_count = sum(1 for s in signals if s.get('signal_type') == 'HOLD')
         
+        # Legacy: confidence-based stats
         confidences = [s.get('confidence', 0) for s in signals]
         avg_conf = sum(confidences) / len(confidences) if confidences else 0
         high_conf = sum(1 for c in confidences if c >= 70)
         
+        # New: edge-based stats
+        strong_edge = sum(1 for s in signals if s.get('edge', '').upper() == 'STRONG')
+        moderate_edge = sum(1 for s in signals if s.get('edge', '').upper() == 'MODERATE')
+        weak_edge = sum(1 for s in signals if s.get('edge', '').upper() == 'WEAK')
+        
         return {
             'total': len(signals),
-            'buy_signals': buy_count,
-            'sell_signals': sell_count,
-            'hold_signals': hold_count,
+            'buy': buy_count,
+            'sell': sell_count,
+            'hold': hold_count,
             'avg_confidence': round(avg_conf, 1),
             'high_confidence': high_conf,
+            # New edge metrics
+            'strong_edge': strong_edge,
+            'moderate_edge': moderate_edge,
+            'weak_edge': weak_edge,
         }
     
     def clear_old_signals(self, days: int = 7):

@@ -103,7 +103,7 @@ def dashboard():
         {
             "label": "AI Signals (24h)",
             "value": signal_stats['total'],
-            "helper": f"{signal_stats['high_confidence']} high confidence",
+            "helper": f"{signal_stats.get('strong_edge', 0)} STRONG edge" if signal_stats.get('strong_edge') else f"{signal_stats['high_confidence']} high confidence",
         },
             {
                 "label": "Kill Switch",
@@ -254,11 +254,16 @@ def _get_last_claude_response() -> Dict:
             signals = signal_monitor.get_recent_signals(hours=24 * 7, limit=1)
         if signals:
             timestamp = signals[0].get('timestamp', 'N/A')
+            # Support both edge (new) and confidence (legacy) fields
+            edge = signals[0].get('edge', None)
+            confidence = signals[0].get('confidence', 0)
+            
             return {
                 'timestamp': timestamp,
                 'symbol': signals[0].get('symbol', 'N/A'),
                 'signal': signals[0].get('signal_type', 'N/A'),
-                'confidence': signals[0].get('confidence', 0),
+                'edge': edge,  # STRONG/MODERATE/WEAK or None
+                'confidence': confidence,  # Legacy: 0-100 or 0
                 'rationale': signals[0].get('rationale', 'N/A'),
                 'age': _format_signal_age(timestamp),
             }

@@ -37,7 +37,11 @@
       {% if last_claude_response.symbol %}
         <div><strong>Symbol:</strong> {{ last_claude_response.symbol }}</div>
         <div><strong>Signal:</strong> <span style="padding: 2px 8px; background: rgba(255,255,255,0.2); border-radius: 4px;">{{ last_claude_response.signal }}</span></div>
+        {% if last_claude_response.edge %}
+        <div><strong>Edge:</strong> <span style="padding: 2px 8px; background: {% if last_claude_response.edge == 'STRONG' %}rgba(16, 185, 129, 0.3){% elif last_claude_response.edge == 'MODERATE' %}rgba(245, 158, 11, 0.3){% else %}rgba(107, 114, 128, 0.3){% endif %}; border-radius: 4px; font-weight: 600;">{{ last_claude_response.edge }}</span></div>
+        {% else %}
         <div><strong>Confidence:</strong> {{ last_claude_response.confidence }}%</div>
+        {% endif %}
         <div><strong>Time:</strong> {{ last_claude_response.timestamp[:19] if last_claude_response.timestamp != 'N/A' else 'N/A' }}</div>
         <div><strong>Age:</strong> {{ last_claude_response.age or 'N/A' }}</div>
       {% else %}
@@ -124,7 +128,7 @@
           <tr>
             <th>Symbol</th>
             <th>Signal</th>
-            <th>Confidence</th>
+            <th>Edge/Conf</th>
             <th>Price</th>
             <th>Stop Loss</th>
             <th>Take Profit</th>
@@ -141,8 +145,16 @@
                 {{ signal.signal_type }}
               </span>
             </td>
-            <td style="font-weight: 600; color: {% if signal.confidence >= 70 %}#10b981{% elif signal.confidence >= 50 %}#f59e0b{% else %}#6b7280{% endif %}">
-              {{ signal.confidence }}%
+            <td>
+              {% if signal.edge %}
+                <span style="padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; {% if signal.edge == 'STRONG' %}background: #d1fae5; color: #065f46{% elif signal.edge == 'MODERATE' %}background: #fed7aa; color: #92400e{% else %}background: #f3f4f6; color: #6b7280{% endif %}">
+                  {{ signal.edge }}
+                </span>
+              {% else %}
+                <span style="font-weight: 600; color: {% if signal.confidence >= 70 %}#10b981{% elif signal.confidence >= 50 %}#f59e0b{% else %}#6b7280{% endif %}">
+                  {{ signal.confidence }}%
+                </span>
+              {% endif %}
             </td>
             <td>${{ "%.2f"|format(signal.current_price) if signal.current_price >= 1 else "%.4f"|format(signal.current_price) }}</td>
             <td>
@@ -192,7 +204,12 @@
       <div><strong>BUY:</strong> <span style="color: #10b981;">{{ signal_stats.buy }}</span></div>
       <div><strong>SELL:</strong> <span style="color: #ef4444;">{{ signal_stats.sell }}</span></div>
       <div><strong>HOLD:</strong> <span style="color: #6b7280;">{{ signal_stats.hold }}</span></div>
+      {% if signal_stats.strong_edge is defined %}
+      <div><strong>STRONG Edge:</strong> <span style="color: #10b981; font-weight: 600;">{{ signal_stats.strong_edge }}</span></div>
+      <div><strong>MODERATE Edge:</strong> <span style="color: #f59e0b; font-weight: 600;">{{ signal_stats.moderate_edge }}</span></div>
+      {% else %}
       <div><strong>High Confidence (≥70%):</strong> <span style="color: #10b981; font-weight: 600;">{{ signal_stats.high_confidence }}</span></div>
+      {% endif %}
     </div>
     {% endif %}
   </section>
