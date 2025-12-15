@@ -168,7 +168,7 @@ STABLECOIN_PAIRS = ["USDT", "BUSD", "USDC"]
 EXCLUDED_COINS = [
     "USDT", "BUSD", "USDC", "DAI",  # Stablecoins
     "BNB",  # Exchange token (optional)
-    "LUNC", "LUNA", "FTT",  # Already delisted/collapsed
+    "LUNC", "FTT",  # Already delisted/collapsed
 ]
 
 EXCLUDE_MONITORING_COINS = True  # Don't trade in-development coins
