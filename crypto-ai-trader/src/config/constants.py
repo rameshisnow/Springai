@@ -9,7 +9,7 @@ from typing import Dict
 # ✅ FIXED: Use DYNAMIC balance, not hardcoded capital
 # This ensures position sizing matches actual available funds
 USE_DYNAMIC_BALANCE = True  # Always use live Binance balance for position sizing
-BALANCE_BUFFER_PERCENT = 0.90  # Use max 90% of free balance (10% buffer for fees/slippage)
+BALANCE_BUFFER_PERCENT = 0.10  # Use max 10% of free balance (monitoring phase - conservative sizing)
 
 # Legacy config (DO NOT USE - kept only for reference)
 STARTING_CAPITAL_AUD = 1000  # NOT USED - always fetch from Binance
