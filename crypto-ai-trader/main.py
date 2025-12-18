@@ -113,7 +113,7 @@ class CryptoTradingBot:
             # Run AI analysis with consensus
             logger.info("Running AI consensus analysis...")
             analysis_result = ai_analyzer.validate_with_consensus(
-                tradeable_coins,
+                coins_data,
                 num_variations=2,  # Run 2 times for speed, 3 for accuracy
             )
             

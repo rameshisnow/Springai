@@ -25,6 +25,8 @@ class BinanceDataFetcher:
     
     def __init__(self):
         self.base_url = self.TEST_NET_URL if config.BINANCE_TESTNET else self.BASE_URL
+        self.api_key = config.BINANCE_API_KEY
+        self.api_secret = config.BINANCE_API_SECRET
         self.session = None
     
     async def get_all_trading_pairs(self) -> List[str]:
@@ -89,14 +91,16 @@ class BinanceDataFetcher:
             logger.debug(f"Error fetching ticker for {symbol}: {e}")
         return None
     
-    async def get_klines(self, symbol: str, interval: str = "1h", limit: int = 100) -> pd.DataFrame:
+    async def get_klines(self, symbol: str, interval: str = "1h", limit: int = 100, start_time: Optional[int] = None, end_time: Optional[int] = None) -> pd.DataFrame:
         """
         Get klines (candlestick) data
         
         Args:
             symbol: Trading pair symbol
             interval: Time interval ('1h', '4h', '1d', etc.)
-            limit: Number of candles to fetch
+            limit: Number of candles to fetch (max 1000)
+            start_time: Start time in milliseconds (optional)
+            end_time: End time in milliseconds (optional)
         
         Returns:
             DataFrame with OHLCV data
@@ -109,6 +113,16 @@ class BinanceDataFetcher:
                 'limit': limit,
             }
             
+            if start_time:
+                params['startTime'] = start_time
+            if end_time:
+                params['endTime'] = end_time
+            
+            # Add API key header for authenticated requests (higher rate limits)
+            headers = {}
+            if self.api_key:
+                headers['X-MBX-APIKEY'] = self.api_key
+            
             # SSL context for corporate firewalls
             import ssl
             ssl_context = ssl.create_default_context()
@@ -117,7 +131,7 @@ class BinanceDataFetcher:
             
             connector = aiohttp.TCPConnector(ssl=ssl_context)
             async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         

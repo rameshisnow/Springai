@@ -1,0 +1,4 @@
+symbol,total_trades,profit_trades,loss_trades,win_rate_percent,total_pnl,allocation,allocation_percent
+DOGEUSDT,52,30,22,57.7,$+1074.83,$400.00,40%
+SHIBUSDT,35,8,27,22.9,$-449.93,$400.00,40%
+SOLUSDT,63,36,27,57.1,$+414.42,$200.00,20%

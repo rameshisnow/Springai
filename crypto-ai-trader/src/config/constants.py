@@ -9,7 +9,7 @@ from typing import Dict
 # ✅ FIXED: Use DYNAMIC balance, not hardcoded capital
 # This ensures position sizing matches actual available funds
 USE_DYNAMIC_BALANCE = True  # Always use live Binance balance for position sizing
-BALANCE_BUFFER_PERCENT = 0.10  # Use max 10% of free balance (monitoring phase - conservative sizing)
+BALANCE_BUFFER_PERCENT = 0.90  # Use 90% of free balance (keep 10% buffer for fees/slippage)
 
 # Legacy config (DO NOT USE - kept only for reference)
 STARTING_CAPITAL_AUD = 1000  # NOT USED - always fetch from Binance
@@ -56,7 +56,8 @@ TRAILING_STOP_PERCENT = 2.0  # Trailing stop at 2% below highest price
 # Timeframes & Analysis
 # For intraday trades: 15-30 min (fast signals, more trades, higher risk)
 # For swing trades: 60-240 min (slower signals, quality over quantity)
-ANALYSIS_INTERVAL_MINUTES = 60  # Run AI analysis every 60 minutes (optimum for quality setups)
+# Goldilock Strategy: 30 min for frequent monitoring of swing trade setups
+ANALYSIS_INTERVAL_MINUTES = 30  # Run AI analysis every 30 minutes for frequent screening
 TRADING_TIMEFRAMES = ["1h", "4h"]  # Analyze on 1h and 4h charts
 PREFERRED_TIMEFRAME = "1h"  # Primary trading timeframe (1h for intraday, 4h for swing)
 

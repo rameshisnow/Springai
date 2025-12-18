@@ -195,10 +195,10 @@
     <a href="{{ url_for('dashboard') }}" class="back-button">← Back to Dashboard</a>
     
     <div class="screening-header">
-      <h1>📊 Primary Screening Results</h1>
+      <h1>📊 Goldilock Strategy Screening</h1>
       <div style="font-size: 0.9rem; color: #6b7280;">
-        Evaluates top 200 coins by volume (from Binance, $5M+ daily volume, excluding stables/delisted/BNB)
-        <br>Auto-refreshes every 30 seconds
+        Monitors DOGEUSDT, SHIBUSDT, SOLUSDT for entry conditions (RSI < 40 + 3/4 indicators)
+        <br>Auto-refreshes every 30 seconds • Scans every 4 hours
       </div>
     </div>
     
@@ -214,8 +214,8 @@
       <!-- Statistics -->
       <div class="screening-stats">
         <div class="stat-box stat-timestamp">
-          <div class="stat-label">Last Scan</div>
-          <div class="stat-value" style="font-size: 0.9rem;">{{ results.timestamp[:19] if results.timestamp else 'N/A' }}</div>
+          <div class="stat-label">Last Scan (Sydney Time)</div>
+          <div class="stat-value" style="font-size: 0.9rem;">{{ results.sydney_timestamp if results.sydney_timestamp else 'N/A' }}</div>
         </div>
         <div class="stat-box stat-passed">
           <div class="stat-label">Passed Screening</div>
@@ -331,6 +331,11 @@
   <script>
     // Auto-refresh the page to get latest screening results
     console.log('Screening results page loaded. Will auto-refresh every 30 seconds.');
+    
+    // Force reload every 30 seconds to ensure fresh data
+    setTimeout(function() {
+      window.location.reload(true);
+    }, 30000);
   </script>
 </body>
 </html>

@@ -1,0 +1,24 @@
+metric,value
+start_date,2021-05-10
+end_date,2025-12-18
+duration_years,4.61
+duration_days,1683
+cagr_percent,16.73
+initial_capital,$1000.00
+final_capital,$2039.32
+total_pnl,$+1039.32
+roi_percent,+103.93
+max_drawdown_percent,26.09
+peak_capital,$2085.70
+total_trades,113
+profitable_trades,74
+loss_trades,76
+win_rate_percent,65.5
+allocation_dogeusdt,$400.00 (40%)
+allocation_shibusdt,$400.00 (40%)
+allocation_solusdt,$200.00 (20%)
+avg_pnl_per_trade,$+6.93
+avg_profit_winners,$+38.39
+avg_loss_losers,$-23.71
+avg_hold_days,8.0
+profit_factor,1.62

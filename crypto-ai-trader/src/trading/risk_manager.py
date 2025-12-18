@@ -56,6 +56,7 @@ class Position:
         self.highest_price = entry_price
         self.current_price = entry_price  # Track latest price for dashboard display
         self.last_price_update = entry_time or datetime.now()  # Track when price was last updated
+        self.tp1_hit = False  # Track if TP1 has been hit (for Goldilock trailing stop)
     
     def update_highest_price(self, current_price: float):
         """Track highest price for trailing stops"""

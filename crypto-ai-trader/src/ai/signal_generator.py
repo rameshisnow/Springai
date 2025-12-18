@@ -36,6 +36,7 @@ from src.config.constants import (
     SCREEN_RSI_MAX,
     COIN_COOLDOWN_HOURS,
 )
+from src.strategies.strategy_manager import StrategyManager
 
 logger.info(f"🔧 CONSTANTS LOADED: MONITORING_ONLY={MONITORING_ONLY}, DRY_RUN_ENABLED={DRY_RUN_ENABLED}")
 
@@ -54,10 +55,15 @@ class SignalOrchestrator:
         self.position_count = 0
         self.token_usage_session = 0
         self.scan_history_file = "data/last_scan.json"
-        logger.info("Signal Orchestrator initialized (Three-Tier Architecture)")
-        logger.info("  Tier 1: Market Watch (lightweight)")
+        
+        # Initialize strategy manager
+        self.strategy_manager = StrategyManager()
+        
+        logger.info("Signal Orchestrator initialized (Strategy-Based Architecture)")
+        logger.info("  Tier 1: Strategy-based screening")
         logger.info("  Tier 2: AI Decision (full Claude only when capacity exists)")
         logger.info("  Tier 3: Trade Execution (strict validation)")
+        logger.info(f"  Tracked coins: {', '.join(self.strategy_manager.get_all_tracked_coins())}")
         
         # Startup validation: Check for position cap violations
         self._validate_position_cap_on_startup()
@@ -244,189 +250,161 @@ class SignalOrchestrator:
         logger.info(f"✅ Tier 1 Complete: {len(coins_essential_data)} coins analyzed (NO Claude calls)")
         return coins_essential_data
 
-    async def _screen_primary_setups(self, top_coins: List[Dict]) -> List[Dict]:
-        """Primary local screen before any Claude call.
+    async def _screen_strategy_based(self, top_coins: List[Dict]) -> List[Dict]:
+        """Strategy-based screening using each coin's strategy entry logic.
 
-        Criteria:
-        - Timeframes: 1H and 4H
-        - 1H: price > EMA9 > EMA21; 4H: price > EMA21 (relaxed)
-        - RSI between 55 and 70 on both 1H and 4H (not overbought)
-        - Breakout: 1H close above prior 20-bar high OR prior 50-bar high (exclude current bar)
-        - Relative strength vs BTC: 1H and 4H % change outperform BTCUSDT
+        For Goldilock Strategy (DOGE/SHIB/SOL):
+        - RSI < 40 (oversold)
+        - Need 3 of 4 conditions:
+          1. EMA 9 > EMA 21 (bullish trend)
+          2. Volume spike > 1.3x average
+          3. MACD bullish (MACD > Signal)
+          4. Daily trend up (price > daily EMA50)
+        
+        Uses strategy.check_entry() for validation instead of hardcoded rules.
         """
 
         logger.info("\n" + "=" * 60)
-        logger.info("🔎 Primary Screen: EMA9/21 + RSI + Breakout + BTC strength")
+        logger.info("🔎 Strategy-Based Screen: Using strategy.check_entry() for each coin")
         logger.info("=" * 60)
 
         filtered: List[Dict] = []
         screening_details: Dict[str, Dict] = {}  # Track why coins pass/fail
 
-        # Benchmark: BTC performance
-        btc_1h = await binance_fetcher.get_klines(symbol="BTCUSDT", interval="1h", limit=30)
-        btc_4h = await binance_fetcher.get_klines(symbol="BTCUSDT", interval="4h", limit=30)
-        btc_change_1h = btc_change_4h = 0.0
-        if not btc_1h.empty:
-            btc_change_1h = ((btc_1h.iloc[-1]['close'] / btc_1h.iloc[-2]['close']) - 1) * 100 if len(btc_1h) >= 2 else 0.0
-        if not btc_4h.empty:
-            btc_change_4h = ((btc_4h.iloc[-1]['close'] / btc_4h.iloc[-2]['close']) - 1) * 100 if len(btc_4h) >= 2 else 0.0
-
-        logger.info(f"📊 BTC benchmark: 1H={btc_change_1h:+.2f}%, 4H={btc_change_4h:+.2f}%")
-        logger.info(f"📋 Evaluating {len(top_coins)} coins from top 100 by volume...")
+        logger.info(f"📋 Evaluating {len(top_coins)} coins using strategy entry conditions...")
 
         for idx, coin in enumerate(top_coins, 1):
             base = coin.get('symbol', '').upper()
             symbol = f"{base}USDT"
             try:
-                df_1h = await binance_fetcher.get_klines(symbol=symbol, interval='1h', limit=120)
-                df_4h = await binance_fetcher.get_klines(symbol=symbol, interval='4h', limit=120)
+                # Get strategy for this coin
+                strategy = self.strategy_manager.get_strategy(symbol)
+                
+                if not strategy:
+                    logger.debug(f"   ⊘ {symbol}: No strategy configured")
+                    screening_details[symbol] = {'status': 'skipped', 'reason': 'No strategy configured'}
+                    continue
+                
+                # Fetch 4H and 1H candles for strategy evaluation
+                df_4h = await binance_fetcher.get_klines(symbol=symbol, interval='4h', limit=200)
+                df_1h = await binance_fetcher.get_klines(symbol=symbol, interval='1h', limit=200)
 
-                if df_1h.empty or df_4h.empty or len(df_1h) < 30 or len(df_4h) < 10:
+                if df_1h.empty or df_4h.empty or len(df_4h) < 50 or len(df_1h) < 50:
                     reason = "Insufficient data"
                     if df_1h.empty or df_4h.empty:
-                        reason = "No candle data available (may be delisted or inactive)"
-                    elif len(df_1h) < 30:
-                        reason = f"Insufficient 1H history ({len(df_1h)} bars, need 30)"
-                    elif len(df_4h) < 10:
-                        reason = f"Insufficient 4H history ({len(df_4h)} bars, need 10)"
+                        reason = "No candle data available"
+                    elif len(df_4h) < 50:
+                        reason = f"Insufficient 4H history ({len(df_4h)} bars, need 50)"
+                    elif len(df_1h) < 50:
+                        reason = f"Insufficient 1H history ({len(df_1h)} bars, need 50)"
                     screening_details[symbol] = {'status': 'skipped', 'reason': reason}
                     logger.debug(f"   ⊘ {symbol}: {reason}")
                     continue
+                
+                # Ensure timestamp is set as index for both dataframes
+                if 'timestamp' in df_4h.columns:
+                    df_4h = df_4h.set_index('timestamp')
+                if 'timestamp' in df_1h.columns:
+                    df_1h = df_1h.set_index('timestamp')
+                
+                # Create daily candles from 1H data (for daily trend check)
+                df_daily = df_1h.resample('1D').agg({
+                    'open': 'first',
+                    'high': 'max',
+                    'low': 'min',
+                    'close': 'last',
+                    'volume': 'sum'
+                }).dropna()
+                
+                # Call strategy entry check
+                should_enter, reason = strategy.check_entry(
+                    df_1h=df_1h,
+                    df_4h=df_4h,
+                    df_daily=df_daily,
+                    current_idx=-1  # Latest bar
+                )
 
+                if not should_enter:
+                    # Entry conditions not met
+                    screening_details[symbol] = {
+                        'status': 'failed',
+                        'reason': reason,
+                        'price': float(df_4h.iloc[-1]['close']),
+                        'rsi': float(df_4h.iloc[-1].get('rsi', 0))
+                    }
+                    logger.debug(f"   ❌ {symbol}: {reason}")
+                    continue
+                
+                # Entry conditions MET! Prepare data for Claude
+                logger.info(f"   ✅ {symbol}: Entry signal detected - {reason}")
+                
+                # Calculate indicators from 1H for Claude context
                 df_1h = compute_all_indicators(df_1h)
-                df_4h = compute_all_indicators(df_4h)
-
                 last_1h = df_1h.iloc[-1]
-                last_4h = df_4h.iloc[-1]
-
                 close_1h = float(last_1h['close'])
-                close_4h = float(last_4h['close'])
-
-                ema9_1h = float(last_1h.get('ema_9', close_1h))
-                ema21_1h = float(last_1h.get('ema_21', close_1h))
-                ema9_4h = float(last_4h.get('ema_9', close_4h))
-                ema21_4h = float(last_4h.get('ema_21', close_4h))
-
-                rsi_1h = float(last_1h.get('rsi', 50))
-                rsi_4h = float(last_4h.get('rsi', 50))
-
-                # Breakout on 1H: close above prior 20-bar high OR prior SCREEN_BREAKOUT_WINDOW high (exclude current bar)
-                prior_high_20 = df_1h['high'].rolling(window=20).max().shift(1).iloc[-1]
-                prior_high_n = df_1h['high'].rolling(window=SCREEN_BREAKOUT_WINDOW).max().shift(1).iloc[-1]
-                breakout_20 = close_1h > prior_high_20 if pd.notna(prior_high_20) else False
-                breakout_n = close_1h > prior_high_n if pd.notna(prior_high_n) else False
-                is_breakout = breakout_20 or breakout_n
-
-                # Performance vs BTC
+                
+                # Calculate changes
                 change_1h = ((close_1h / df_1h.iloc[-2]['close']) - 1) * 100 if len(df_1h) >= 2 else 0.0
-                change_4h = ((close_4h / df_4h.iloc[-2]['close']) - 1) * 100 if len(df_4h) >= 2 else 0.0
-                rel_strength = (change_1h > btc_change_1h) and (change_4h > btc_change_4h)
-
-                # Volume + ATR
+                change_4h = ((close_1h / df_1h.iloc[-5]['close']) - 1) * 100 if len(df_1h) >= 5 else 0.0
+                change_24h = ((close_1h / df_1h.iloc[-25]['close']) - 1) * 100 if len(df_1h) >= 25 else 0.0
+                
+                # Volume metrics
                 volume_1h = float(last_1h['volume']) * close_1h
-                volume_24h = float(df_1h['volume'].iloc[-24:].sum()) * close_1h
-                atr_1h = float(last_1h.get('atr', 0))
-                atr_percent = (atr_1h / close_1h) * 100 if close_1h > 0 else 0.0
+                volume_24h = float(df_1h['volume'].iloc[-24:].sum()) * close_1h if len(df_1h) >= 24 else volume_1h * 24
+                
+                # Technical indicators
+                rsi = float(last_1h.get('rsi', 50))
+                atr = float(last_1h.get('atr', 0))
+                atr_percent = (atr / close_1h) * 100 if close_1h > 0 else 0.0
                 above_ema200 = close_1h > float(last_1h.get('ema_200', close_1h))
                 
-                # Calculate volume spike
-                avg_volume = volume_24h / 24
-                volume_spike = volume_1h / max(avg_volume, 0.0001)
-                
-                # Primary filters
-                ema_ok = (close_1h > ema9_1h > ema21_1h) and (close_4h > ema21_4h)
-                rsi_ok = SCREEN_RSI_MIN <= rsi_1h <= SCREEN_RSI_MAX and SCREEN_RSI_MIN <= rsi_4h <= SCREEN_RSI_MAX
-                breakout_ok = is_breakout
-                strength_ok = rel_strength
-                
-                # ✅ NEW: Calculate boolean filter flags for Claude
+                # Store minimal filter flags for Claude
                 filters = {
-                    'breakout_50bar': bool(breakout_n),  # True if 50-bar breakout
-                    'breakout_20bar': bool(breakout_20 and not breakout_n),  # True if only 20-bar
-                    'rsi_early_range': bool(55 <= rsi_1h <= 65),  # Early in RSI range
-                    'rsi_mid_range': bool(60 <= rsi_1h <= 70),  # Mid RSI range
-                    'volume_spike_2x': bool(volume_spike >= 2.0),  # 2x+ volume
-                    'volume_spike_1_5x': bool(1.5 <= volume_spike < 2.0),  # 1.5-2x volume
-                    'btc_outperform_1h': bool(change_1h > btc_change_1h),
-                    'btc_outperform_4h': bool(change_4h > btc_change_4h),
-                    'ema_spread_strong': bool((ema9_1h - ema21_1h) / ema21_1h > 0.015),  # >1.5% spread
-                    'composite_score': 0.0,  # Will calculate below
+                    'strategy_entry': True,  # Passed strategy.check_entry()
+                    'entry_reason': reason,
+                    'rsi_oversold': rsi < 40,
+                    'composite_score': 1.0  # All strategy coins weighted equally
                 }
                 
-                # Calculate composite score for ranking
-                score = 0.0
-                if filters['breakout_50bar']:
-                    score += 3.0  # 50-bar breakout worth more
-                elif filters['breakout_20bar']:
-                    score += 1.5
-                if filters['rsi_early_range']:
-                    score += 2.0  # Early RSI position better
-                elif filters['rsi_mid_range']:
-                    score += 1.0
-                if filters['volume_spike_2x']:
-                    score += 2.0
-                elif filters['volume_spike_1_5x']:
-                    score += 1.0
-                if filters['ema_spread_strong']:
-                    score += 1.0
-                if rel_strength:
-                    score += 1.0
-                
+                # Minimal score (all strategy-qualified coins treated equally)
+                score = 1.0
                 filters['composite_score'] = score
-
-                # Track screening result (convert numpy/pandas bools to Python bool for JSON serialization)
+                
+                # Coin passed strategy entry check
+                logger.info(f"      RSI: {rsi:.1f}")
+                logger.info(f"      Price: ${close_1h:.4f}")
+                logger.info(f"      Change: 1H={change_1h:+.2f}%, 4H={change_4h:+.2f}%, 24H={change_24h:+.2f}%")
+                
                 screening_details[symbol] = {
-                    'status': 'passed' if (ema_ok and rsi_ok and breakout_ok and strength_ok) else 'failed',
-                    'current_price': round(close_1h, 4),
-                    'filters': {
-                        'ema': {'passed': bool(ema_ok), 'close_1h': round(close_1h, 4), 'ema9_1h': round(ema9_1h, 4), 'ema21_1h': round(ema21_1h, 4), 'close_4h': round(close_4h, 4), 'ema21_4h': round(ema21_4h, 4)},
-                        'rsi': {'passed': bool(rsi_ok), 'rsi_1h': round(rsi_1h, 2), 'rsi_4h': round(rsi_4h, 2), 'min': SCREEN_RSI_MIN, 'max': SCREEN_RSI_MAX},
-                        'breakout': {'passed': bool(breakout_ok), 'is_breakout': bool(is_breakout), 'above_20bar_high': bool(breakout_20), 'above_50bar_high': bool(breakout_n)},
-                        'btc_strength': {'passed': bool(strength_ok), 'coin_change_1h': round(change_1h, 2), 'btc_change_1h': round(btc_change_1h, 2), 'coin_change_4h': round(change_4h, 2), 'btc_change_4h': round(btc_change_4h, 2)},
-                    }
+                    'status': 'passed',
+                    'reason': f'Strategy entry: {reason}',
+                    'price': close_1h,
+                    'rsi': rsi,
+                    'entry_reason': reason,
+                    'change_1h': change_1h,
+                    'change_4h': change_4h,
+                    'change_24h': change_24h,
+                    'filters': filters,
                 }
-
-                if not (ema_ok and rsi_ok and breakout_ok and strength_ok):
-                    # Log why this coin failed
-                    reasons = []
-                    if not ema_ok:
-                        reasons.append(f"EMA (C:{close_1h:.2f}>E9:{ema9_1h:.2f}>E21:{ema21_1h:.2f})")
-                    if not rsi_ok:
-                        reasons.append(f"RSI 1H:{rsi_1h:.1f} 4H:{rsi_4h:.1f} (need {SCREEN_RSI_MIN}-{SCREEN_RSI_MAX})")
-                    if not breakout_ok:
-                        reasons.append(f"Breakout")
-                    if not strength_ok:
-                        reasons.append(f"BTC strength (C1H:{change_1h:+.2f}% vs BTC:{btc_change_1h:+.2f}%)")
-                    screening_details[symbol]['reason'] = ' | '.join(reasons)
-                    continue
-
-                # 24H change for prompt context
-                change_24h = ((close_1h / df_1h.iloc[-25]['close']) - 1) * 100 if len(df_1h) >= 25 else change_4h
-
+                
                 filtered.append({
                     'symbol': symbol,
                     'current_price': close_1h,
-                    'filters': filters,  # ✅ NEW: Pass pre-calculated boolean flags
                     'indicators': {
                         'change_1h': change_1h,
                         'change_4h': change_4h,
                         'change_24h': change_24h,
                         'volume_1h': volume_1h,
                         'volume_24h': volume_24h,
-                        'rsi': rsi_1h,
-                        'rsi_4h': rsi_4h,
-                        'atr': atr_1h,
+                        'rsi': rsi,
+                        'atr': atr,
                         'atr_percent': atr_percent,
                         'above_ema200': above_ema200,
-                        'ema9_above_21_1h': ema9_1h > ema21_1h,
-                        'ema9_above_21_4h': ema9_4h > ema21_4h,
-                        'breakout_1h': breakout_ok,
-                        'rel_strength_btc': strength_ok,
                     },
                     'df': df_1h,
+                    'filters': filters,
+                    'entry_reason': reason,  # Strategy entry reason
                 })
-
-                logger.info(f"✅ Passed primary screen: {symbol} | 1H change {change_1h:+.2f}% | RSI {rsi_1h:.1f}/{rsi_4h:.1f}")
 
             except Exception as e:
                 logger.error(f"Error screening {symbol}: {e}")
@@ -467,15 +445,13 @@ class SignalOrchestrator:
         except Exception as e:
             logger.error(f"Failed to save screening results: {e}")
 
-        # ✅ NEW: Sort by composite score and limit to top SCREEN_MAX_CANDIDATES
-        filtered_sorted = sorted(filtered, key=lambda x: x.get('filters', {}).get('composite_score', 0), reverse=True)
-        filtered_top = filtered_sorted[:SCREEN_MAX_CANDIDATES]
+        # Return all strategy-qualified coins (already limited to tracked coins)
+        logger.info(f"Strategy screen complete: {len(filtered)} coin(s) passed entry conditions")
+        if filtered:
+            for coin in filtered:
+                logger.info(f"  ✅ {coin['symbol']}: {coin.get('entry_reason', 'Entry signal')}")
         
-        logger.info(f"Primary screen complete: {len(filtered)} qualified, passing top {len(filtered_top)} to Claude")
-        if len(filtered_top) < len(filtered):
-            logger.info(f"  Filtered out {len(filtered) - len(filtered_top)} lower-scored candidates")
-        
-        return filtered_top
+        return filtered
     
     async def _check_exceptional_event(self, coins_data: List[Dict]) -> Optional[Dict]:
         """
@@ -590,24 +566,27 @@ Output JSON only:
             logger.info(f"ANALYSIS CYCLE START at {datetime.now(timezone.utc)}")
             logger.info("=" * 80)
             
-            # Step 1: Get top N coins (volume proxy for market value)
-            logger.info(f"Fetching top {SCREEN_TOP_N} coins by volume...")
-            top_coins = await data_processor.get_top_n_coins_by_volume(n=SCREEN_TOP_N)
+            # Step 1: Get coins from strategy manager (DOGE, SHIB, SOL only)
+            tracked_coins = self.strategy_manager.get_all_tracked_coins()
+            logger.info(f"Strategy-based tracking: {len(tracked_coins)} coins ({', '.join(tracked_coins)})")
+            
+            # Convert to format expected by screening
+            top_coins = [{'symbol': coin.replace('USDT', '')} for coin in tracked_coins]
             
             if not top_coins:
-                logger.warning("No tradeable coins found")
-                return {"status": "error", "reason": "no_coins"}
+                logger.warning("No coins configured in strategy manager")
+                return {"status": "error", "reason": "no_coins_configured"}
             
             logger.info(f"Found {len(top_coins)} tradeable coins")
             
             # ===================================================================
-            # PRIMARY SCREEN: Technical prerequisites before any Claude call
+            # STRATEGY-BASED SCREEN: Use strategy.check_entry() for each coin
             # ===================================================================
-            coins_data = await self._screen_primary_setups(top_coins)
+            coins_data = await self._screen_strategy_based(top_coins)
 
             if not coins_data:
-                logger.warning("No coins met primary screen (EMA9/21 + RSI + breakout + BTC strength)")
-                self._record_scan_completion(status="no_candidates", reason="No coins met primary screen")
+                logger.warning("No coins met strategy entry conditions (RSI<40 + 3/4 conditions)")
+                self._record_scan_completion(status="no_candidates", reason="No coins met strategy entry conditions")
                 return {"status": "no_candidates"}
             
             # Check position capacity
@@ -805,6 +784,7 @@ Output JSON only:
             
             # Calculate position size (from safety_gates)
             quantity, position_value = safety_gates.calculate_position_size(
+                symbol=symbol,
                 account_balance=risk_manager.current_balance,
                 current_price=current_price,
                 atr_percent=indicators['atr_percent'],

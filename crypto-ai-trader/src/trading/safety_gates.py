@@ -14,10 +14,40 @@ from src.config.constants import (
     RISK_PER_TRADE_PERCENT,
     MAX_POSITION_EXPOSURE_PERCENT,
 )
+from src.strategies.strategy_manager import StrategyManager
 
 
 class TradeSafetyGates:
     """Enforce strict safety rules before allowing any trade execution"""
+    
+    def __init__(self):
+        """Initialize with strategy manager for position sizing"""
+        self.strategy_manager = StrategyManager()
+        logger.info("Trade Safety Gates initialized with strategy-based position sizing")
+    
+    def check_monthly_trade_limit(self, symbol: str) -> tuple[bool, Optional[str]]:
+        """
+        Check if symbol can be traded this month (Goldilock: max 1 per month per coin)
+        
+        Args:
+            symbol: Trading symbol (e.g., DOGEUSDT)
+        
+        Returns:
+            (can_trade: bool, reason: str | None)
+        """
+        from datetime import datetime
+        
+        strategy = self.strategy_manager.get_strategy(symbol)
+        
+        if not strategy:
+            # No strategy = no monthly limit
+            return True, None
+        
+        # Check if can trade this month
+        if not strategy.can_trade_this_month(datetime.now(), symbol):
+            return False, f"Monthly trade limit reached for {symbol}"
+        
+        return True, None
     
     # Safety thresholds
     MIN_24H_VOLUME_USD = 50_000_000  # $50M minimum liquidity
@@ -26,8 +56,8 @@ class TradeSafetyGates:
     MIN_RSI = 25  # Avoid extremely oversold
     MAX_RSI = 78  # Avoid overextended
     
-    @staticmethod
     def validate_trade(
+        self,
         symbol: str,
         ai_decision: Dict,
         current_price: float,
@@ -52,30 +82,35 @@ class TradeSafetyGates:
             (approved: bool, rejection_reason: str | None)
         """
         
-        # Gate 1: AI Action must be BUY
+        # Gate 1: Monthly Trade Limit (Goldilock: 1/month per coin)
+        can_trade, reason = self.check_monthly_trade_limit(symbol)
+        if not can_trade:
+            return False, reason
+        
+        # Gate 2: AI Action must be BUY
         if ai_decision.get('action') != 'BUY':
             return False, "AI decision is not BUY"
         
-        # Gate 2: Liquidity Check
+        # Gate 3: Liquidity Check
         if volume_24h_usd < TradeSafetyGates.MIN_24H_VOLUME_USD:
             return False, f"Insufficient liquidity: ${volume_24h_usd/1e6:.1f}M < $50M"
         
-        # Gate 3: Confidence Threshold - ✅ ENFORCED per best practices
+        # Gate 4: Confidence Threshold - ✅ ENFORCED per best practices
         confidence = ai_decision.get('confidence', 0)
         if confidence < MIN_CONFIDENCE_TO_TRADE:
             return False, f"Low confidence: {confidence}% < {MIN_CONFIDENCE_TO_TRADE}%"
         
-        # Gate 4: RSI Range
+        # Gate 5: RSI Range
         if rsi < TradeSafetyGates.MIN_RSI:
             return False, f"RSI too low (extreme oversold): {rsi:.0f}"
         if rsi > TradeSafetyGates.MAX_RSI:
             return False, f"RSI overextended: {rsi:.0f} > {TradeSafetyGates.MAX_RSI}"
         
-        # Gate 5: Position Limit - ✅ REDUCED to 2 per best practices
+        # Gate 6: Position Limit - ✅ REDUCED to 2 per best practices
         if active_positions >= MAX_OPEN_POSITIONS:
             return False, f"Max positions reached: {active_positions}/{MAX_OPEN_POSITIONS}"
         
-        # Gate 6: Account Balance Check
+        # Gate 7: Account Balance Check
         if account_balance < 10:  # Minimum $10 to trade
             return False, f"Insufficient balance: ${account_balance:.2f}"
         
@@ -83,17 +118,19 @@ class TradeSafetyGates:
         logger.info(f"✅ All safety gates passed for {symbol}")
         return True, None
     
-    @staticmethod
     def calculate_position_size(
+        self,
+        symbol: str,
         account_balance: float,
         current_price: float,
         atr_percent: float,
     ) -> tuple[float, float]:
         """
         ✅ FIXED: Calculate position size from DYNAMIC account balance
-        NOT from hardcoded starting capital
+        Uses strategy-based sizing: 40% for Goldilock coins, 6% for others
         
         Args:
+            symbol: Trading symbol (e.g., DOGEUSDT)
             account_balance: Current FREE balance (not starting capital!)
             current_price: Entry price
             atr_percent: ATR as percentage
@@ -101,24 +138,20 @@ class TradeSafetyGates:
         Returns:
             (quantity, position_value_usd)
         """
+        # Get strategy-specific position size if available
+        strategy = self.strategy_manager.get_strategy(symbol)
+        if strategy:
+            position_size_pct = strategy.get_position_size_pct()  # 40% for Goldilock
+            logger.info(f"Using strategy position size for {symbol}: {position_size_pct*100}%")
+        else:
+            position_size_pct = MAX_POSITION_EXPOSURE_PERCENT / 100  # 6% default
+            logger.info(f"Using default position size for {symbol}: {position_size_pct*100}%")
+        
         # ✅ Apply 90% buffer to account balance (10% safety margin for fees/slippage)
         usable_balance = account_balance * BALANCE_BUFFER_PERCENT
         
-        # Risk percentage per trade (1.5%)
-        risk_amount = usable_balance * (RISK_PER_TRADE_PERCENT / 100)
-        
-        # Position value based on risk and volatility (ATR)
-        # If ATR is 3%, position_value = risk / 0.03
-        if atr_percent > 0:
-            position_value = risk_amount / (atr_percent / 100)
-        else:
-            position_value = risk_amount
-        
-        # ✅ Cap at max 2% of account per position (never exceed)
-        position_value = min(
-            position_value,
-            usable_balance * (MAX_POSITION_EXPOSURE_PERCENT / 100)
-        )
+        # Calculate position value directly from percentage
+        position_value = usable_balance * position_size_pct
         
         # ✅ Final safety check: must have balance for the trade
         if position_value > usable_balance:
@@ -129,8 +162,8 @@ class TradeSafetyGates:
         quantity = position_value / current_price if current_price > 0 else 0
         
         logger.info(
-            f"✅ Dynamic position sizing: "
-            f"{quantity:.6f} units (${position_value:.2f}) from balance ${account_balance:.2f}"
+            f"✅ Strategy-based position sizing: "
+            f"{quantity:.6f} units (${position_value:.2f}, {position_size_pct*100}%) from balance ${account_balance:.2f}"
         )
         
         return quantity, position_value

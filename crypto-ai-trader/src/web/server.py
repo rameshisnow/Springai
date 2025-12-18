@@ -152,10 +152,33 @@ def _build_active_trades(positions_data: Dict[str, Dict]) -> List[Dict]:
         stop_loss = position_data.get("stop_loss", 0) or 0
         take_profit_targets = position_data.get("take_profit_targets", [])
         take_profit = take_profit_targets[0]["price"] if take_profit_targets else entry_price
+        
+        # Goldilock strategy info
+        entry_time_str = position_data.get("entry_time")
+        if entry_time_str:
+            entry_time = datetime.fromisoformat(entry_time_str)
+            hold_days = (datetime.now() - entry_time).days
+        else:
+            hold_days = 0
+        
+        tp1_hit = position_data.get("tp1_hit", False)
+        highest_price = position_data.get("highest_price", current_price)
 
         # Calculate P&L based on the most recent persisted price
         pnl = (current_price - entry_price) * quantity
         pnl_percent = ((current_price - entry_price) / entry_price) * 100 if entry_price else 0
+        
+        # Strategy status
+        strategy_status = ""
+        if hold_days < 7:
+            strategy_status = f"Min Hold (Day {hold_days}/7)"
+        elif tp1_hit:
+            trailing_price = highest_price * 0.95
+            strategy_status = f"Trailing Active (${trailing_price:.4f})"
+        elif hold_days >= 90:
+            strategy_status = "Max Hold Reached!"
+        else:
+            strategy_status = f"Day {hold_days}"
 
         trades.append(
             {
@@ -169,6 +192,10 @@ def _build_active_trades(positions_data: Dict[str, Dict]) -> List[Dict]:
                 "take_profit": take_profit,
                 "status": "ACTIVE",
                 "last_update": _format_local_time(position_data.get("last_price_update")),
+                "hold_days": hold_days,
+                "tp1_hit": tp1_hit,
+                "highest_price": highest_price,
+                "strategy_status": strategy_status,
             }
         )
     return trades
@@ -304,12 +331,16 @@ def _get_scan_timing(sydney_tz) -> Dict:
         
         # Calculate next scan
         if last_scan_sydney:
-            # If the last scan is stale, roll forward to the next future slot
-            intervals_passed = max(
-                1,
-                int(((now_sydney - last_scan_sydney) // interval)) + 1,
-            ) if last_scan_sydney < now_sydney else 1
-            next_scan_sydney = last_scan_sydney + (interval * intervals_passed)
+            # Calculate how many intervals have passed since last scan
+            time_since_last = now_sydney - last_scan_sydney
+            intervals_passed = int(time_since_last.total_seconds() / (interval.total_seconds()))
+            
+            if intervals_passed >= 1:
+                # Last scan is old, calculate next future scan
+                next_scan_sydney = last_scan_sydney + (interval * (intervals_passed + 1))
+            else:
+                # Last scan was recent, next scan is simply last + interval
+                next_scan_sydney = last_scan_sydney + interval
         else:
             # If no previous scan, next scan is now + interval
             next_scan_sydney = now_sydney + interval
@@ -418,7 +449,25 @@ def _load_screening_results() -> Dict:
         if not screening_file.exists():
             return {'message': 'No screening results yet. First scan pending...'}
         with screening_file.open('r') as f:
-            return json.load(f)
+            data = json.load(f)
+        
+        # Convert UTC timestamp to Sydney time for display
+        if 'timestamp' in data:
+            try:
+                # Parse UTC timestamp
+                utc_time = datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00'))
+                
+                # Convert to Sydney timezone
+                sydney_tz = pytz.timezone('Australia/Sydney')
+                sydney_time = utc_time.astimezone(sydney_tz)
+                
+                # Format for display
+                data['sydney_timestamp'] = sydney_time.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception as e:
+                logger.debug(f"Error converting timestamp to Sydney time: {e}")
+                data['sydney_timestamp'] = data.get('timestamp', 'N/A')
+        
+        return data
     except Exception as e:
         logger.error(f"Error loading screening results: {e}")
         return {'error': str(e)}

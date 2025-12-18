@@ -84,7 +84,7 @@
     {% endfor %}
   </section>
   <section class="section-card">
-    <h2>Active Trades</h2>
+    <h2>Active Trades <span style="font-size: 0.85rem; color: #6b7280; font-weight: normal;">(Goldilock Strategy: DOGE/SHIB/SOL)</span></h2>
     <div class="table-wrapper">
       <table>
         <thead>
@@ -93,31 +93,56 @@
             <th>Quantity</th>
             <th>Entry</th>
             <th>Current</th>
+            <th>High</th>
             <th>P&amp;L</th>
             <th>Stop Loss</th>
-            <th>Take Profit</th>
+            <th>TP1 (+15%)</th>
+            <th>Hold Days</th>
+            <th>Strategy Status</th>
             <th>Last Update</th>
-            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {% for trade in active_trades %}
           <tr>
-            <td>{{ trade.symbol }}</td>
+            <td><strong>{{ trade.symbol }}</strong></td>
             <td>{{ "%.8g" % trade.quantity }}</td>
-            <td>${{ "%.2f" % trade.entry }}</td>
-            <td>${{ "%.2f" % trade.current }}</td>
-            <td style="color: {{ '#10b981' if trade.pnl >= 0 else '#ef4444' }};">{{ '+' if trade.pnl >= 0 else '' }}${{ "%.2f" % trade.pnl }} ({{ "%+.1f" % trade.pnl_percent }}%)</td>
-            <td>${{ "%.2f" % trade.stop_loss }}</td>
-            <td>${{ "%.2f" % trade.take_profit }}</td>
+            <td>${{ "%.4f" % trade.entry }}</td>
+            <td>${{ "%.4f" % trade.current }}</td>
+            <td style="color: #8b5cf6; font-weight: 600;">${{ "%.4f" % trade.highest_price }}</td>
+            <td style="color: {{ '#10b981' if trade.pnl >= 0 else '#ef4444' }}; font-weight: 600;">{{ '+' if trade.pnl >= 0 else '' }}${{ "%.2f" % trade.pnl }} ({{ "%+.1f" % trade.pnl_percent }}%)</td>
+            <td>${{ "%.4f" % trade.stop_loss }} <br><span style="font-size: 0.75rem; color: #6b7280;">{{ '8%' if trade.hold_days < 7 else '3%' }}</span></td>
+            <td>${{ "%.4f" % trade.take_profit }} <br>{% if trade.tp1_hit %}<span style="font-size: 0.75rem; color: #10b981; font-weight: 600;">✓ HIT</span>{% else %}<span style="font-size: 0.75rem; color: #6b7280;">Pending</span>{% endif %}</td>
+            <td style="text-align: center;">
+              <strong>{{ trade.hold_days }}</strong><br>
+              <span style="font-size: 0.75rem; color: {{ '#f59e0b' if trade.hold_days < 7 else '#10b981' if trade.hold_days < 90 else '#ef4444' }};">
+                {{ 'Min hold' if trade.hold_days < 7 else 'Active' if trade.hold_days < 90 else 'MAX!' }}
+              </span>
+            </td>
+            <td>
+              <span style="padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; {% if trade.hold_days < 7 %}background: #fef3c7; color: #92400e{% elif trade.tp1_hit %}background: #d1fae5; color: #065f46{% elif trade.hold_days >= 90 %}background: #fee2e2; color: #991b1b{% else %}background: #e0e7ff; color: #3730a3{% endif %}">
+                {{ trade.strategy_status }}
+              </span>
+            </td>
             <td style="font-size: 0.85rem; color: #6b7280;">{{ trade.last_update }}</td>
-            <td><span class="badge">{{ trade.status }}</span></td>
           </tr>
           {% else %}
-          <tr><td colspan="9">No open trades</td></tr>
+          <tr><td colspan="11" style="text-align: center; padding: 24px; color: #6b7280;">No open trades - Waiting for next signal (DOGE/SHIB/SOL only)</td></tr>
           {% endfor %}
         </tbody>
       </table>
+    </div>
+    <!-- Goldilock Strategy Legend -->
+    <div style="margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 0.85rem;">
+      <strong style="color: #111827;">Strategy Info:</strong>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px;">
+        <div><span style="color: #f59e0b;">●</span> <strong>Days 0-6:</strong> 8% SL (min hold, only SL exits)</div>
+        <div><span style="color: #10b981;">●</span> <strong>Day 7+:</strong> 3% SL, TP1/TP2 enabled</div>
+        <div><span style="color: #8b5cf6;">●</span> <strong>TP1 (+15%):</strong> Close 50%, activate trailing</div>
+        <div><span style="color: #3b82f6;">●</span> <strong>TP2 (+30%):</strong> Close remaining 50%</div>
+        <div><span style="color: #ec4899;">●</span> <strong>Trailing:</strong> 5% from highest (after TP1)</div>
+        <div><span style="color: #ef4444;">●</span> <strong>Day 90:</strong> Max hold - force exit</div>
+      </div>
     </div>
   </section>
   <section class="section-card">
