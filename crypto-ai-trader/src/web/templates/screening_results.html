@@ -244,11 +244,66 @@
               <span class="coin-status status-{{ coin_data.status }}">{{ coin_data.status|upper }}</span>
             </div>
             
-            {% if coin_data.current_price %}
+            {% if coin_data.price %}
+              <div class="coin-price">💰 ${{ "%.6f"|format(coin_data.price) }}</div>
+            {% elif coin_data.current_price %}
               <div class="coin-price">💰 ${{ "%.4f"|format(coin_data.current_price) }}</div>
             {% endif %}
             
-            {% if coin_data.filters %}
+            {% if coin_data.criteria %}
+              <!-- Goldilock Strategy Criteria -->
+              <div class="filter-section">
+                <div class="filter-name">📊 Entry Criteria (Need 3/4)</div>
+                <div class="filter-details">
+                  <div style="font-weight: bold; margin-bottom: 8px;">
+                    {{ coin_data.conditions_met }}/{{ coin_data.conditions_required }} conditions met
+                  </div>
+                  
+                  <!-- RSI Condition -->
+                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.rsi_met %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                    {% if coin_data.criteria.rsi_met %}✅{% else %}❌{% endif %} 
+                    <strong>RSI:</strong> {{ "%.1f"|format(coin_data.criteria.rsi) }} 
+                    (need < {{ coin_data.criteria.rsi_target }})
+                  </div>
+                  
+                  <!-- EMA Cross -->
+                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.ema_cross %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                    {% if coin_data.criteria.ema_cross %}✅{% else %}❌{% endif %} 
+                    <strong>EMA Cross:</strong> EMA9 {{ "%.6f"|format(coin_data.criteria.ema9) }}
+                    {% if coin_data.criteria.ema_cross %}>&lt;{% else %}≤{% endif %} 
+                    EMA21 {{ "%.6f"|format(coin_data.criteria.ema21) }}
+                  </div>
+                  
+                  <!-- Volume Spike -->
+                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.volume_spike %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                    {% if coin_data.criteria.volume_spike %}✅{% else %}❌{% endif %} 
+                    <strong>Volume:</strong> {{ "%.2f"|format(coin_data.criteria.volume_ratio) }}x 
+                    (need > {{ coin_data.criteria.volume_target }}x)
+                  </div>
+                  
+                  <!-- MACD -->
+                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.macd_bullish %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                    {% if coin_data.criteria.macd_bullish %}✅{% else %}❌{% endif %} 
+                    <strong>MACD:</strong> {{ "Bullish" if coin_data.criteria.macd_bullish else "Bearish" }}
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Daily Trend Filter -->
+              <div class="filter-section">
+                <div class="filter-name">📈 Daily Trend Filter (REQUIRED)</div>
+                <div class="filter-details">
+                  <div class="{% if coin_data.criteria.daily_trend %}filter-passed{% else %}filter-failed{% endif %}">
+                    {% if coin_data.criteria.daily_trend %}✅ PASSED{% else %}❌ FAILED{% endif %}
+                  </div>
+                  <div style="margin-top: 4px; color: #6b7280;">
+                    Daily Price: ${{ "%.6f"|format(coin_data.criteria.daily_price) }}<br>
+                    Daily EMA50: ${{ "%.6f"|format(coin_data.criteria.daily_ema50) }}<br>
+                    <em>(Price must be > EMA50)</em>
+                  </div>
+                </div>
+              </div>
+            {% elif coin_data.filters %}
               <!-- EMA Filter -->
               {% if coin_data.filters.ema %}
                 <div class="filter-section">

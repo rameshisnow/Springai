@@ -325,14 +325,57 @@ class SignalOrchestrator:
                 )
 
                 if not should_enter:
-                    # Entry conditions not met
+                    # Entry conditions not met - collect detailed diagnostics
+                    last_4h = df_4h.iloc[-1]
+                    current_price = float(last_4h['close'])
+                    
+                    # Get all indicator values for diagnostics
+                    rsi_val = float(last_4h.get('rsi', 0))
+                    ema9 = float(last_4h.get('ema_9', 0))
+                    ema21 = float(last_4h.get('ema_21', 0))
+                    volume_ratio = float(last_4h.get('volume_ratio', 0))
+                    macd_bullish = bool(last_4h.get('macd_bullish', False))
+                    
+                    # Get daily trend info
+                    daily_bars_before = df_daily[df_daily.index <= df_4h.index[-1]]
+                    if len(daily_bars_before) > 0:
+                        daily_close = float(daily_bars_before['close'].iloc[-1])
+                        daily_ema50 = float(daily_bars_before.get('ema_50', daily_bars_before['close']).iloc[-1])
+                    else:
+                        daily_close = current_price
+                        daily_ema50 = current_price
+                    
+                    # Count how many of the 4 conditions are met
+                    conditions_met = sum([
+                        ema9 > ema21,
+                        rsi_val < 40,
+                        volume_ratio > 1.3,
+                        macd_bullish
+                    ])
+                    
                     screening_details[symbol] = {
                         'status': 'failed',
                         'reason': reason,
-                        'price': float(df_4h.iloc[-1]['close']),
-                        'rsi': float(df_4h.iloc[-1].get('rsi', 0))
+                        'price': current_price,
+                        'criteria': {
+                            'rsi': rsi_val,
+                            'rsi_target': 40,
+                            'rsi_met': rsi_val < 40,
+                            'ema9': ema9,
+                            'ema21': ema21,
+                            'ema_cross': ema9 > ema21,
+                            'volume_ratio': volume_ratio,
+                            'volume_target': 1.3,
+                            'volume_spike': volume_ratio > 1.3,
+                            'macd_bullish': macd_bullish,
+                            'daily_price': daily_close,
+                            'daily_ema50': daily_ema50,
+                            'daily_trend': daily_close > daily_ema50,
+                        },
+                        'conditions_met': conditions_met,
+                        'conditions_required': 3
                     }
-                    logger.debug(f"   ❌ {symbol}: {reason}")
+                    logger.debug(f"   ❌ {symbol}: {reason} ({conditions_met}/4 conditions)")
                     continue
                 
                 # Entry conditions MET! Prepare data for Claude
