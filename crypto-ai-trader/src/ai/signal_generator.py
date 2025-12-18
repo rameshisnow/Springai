@@ -316,6 +316,10 @@ class SignalOrchestrator:
                     'volume': 'sum'
                 }).dropna()
                 
+                # Calculate indicators for diagnostics (before check_entry)
+                df_4h = strategy.calculate_indicators(df_4h)
+                df_daily = strategy.calculate_indicators(df_daily)
+                
                 # Call strategy entry check
                 should_enter, reason = strategy.check_entry(
                     df_1h=df_1h,
