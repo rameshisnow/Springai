@@ -3,6 +3,7 @@ Position Monitor - Continuous monitoring of open positions for profit/loss booki
 Runs independently from signal generation every 5 minutes
 """
 import asyncio
+import signal
 from datetime import datetime
 from src.utils.logger import logger
 from src.trading.order_manager import order_manager
@@ -503,3 +504,40 @@ class PositionMonitor:
 
 # Singleton instance
 position_monitor = PositionMonitor()
+
+
+async def _run_forever() -> None:
+    await position_monitor.monitor_positions()
+
+
+def main() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    def _request_stop(*_args) -> None:
+        try:
+            position_monitor.stop()
+        except Exception:
+            pass
+
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(sig, _request_stop)
+            except NotImplementedError:
+                signal.signal(sig, lambda *_a: _request_stop())
+
+        loop.run_until_complete(_run_forever())
+    finally:
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        finally:
+            loop.close()
+
+
+if __name__ == "__main__":
+    main()

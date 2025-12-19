@@ -2,6 +2,8 @@
 Description=SpringAI Crypto Trader - Position Monitor
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -12,8 +14,11 @@ WorkingDirectory=/opt/springai/crypto-ai-trader
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/springai/crypto-ai-trader/venv/bin/python3 -m src.monitoring.position_monitor
 
-Restart=always
+Restart=on-failure
 RestartSec=5
+
+TimeoutStopSec=30
+KillSignal=SIGTERM
 
 StandardOutput=journal
 StandardError=journal

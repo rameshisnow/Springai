@@ -2,6 +2,8 @@
 Description=SpringAI Crypto Trader - Dashboard Web Server
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -10,10 +12,14 @@ Group=deploy
 WorkingDirectory=/opt/springai/crypto-ai-trader
 
 Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/bash -lc 'if command -v lsof >/dev/null 2>&1; then pids=$(lsof -t -iTCP:8080 -sTCP:LISTEN || true); else pids=$(ss -ltnp 2>/dev/null | awk \'/[:.]8080/ && /pid=/{match($0,/pid=([0-9]+)/,m); if (m[1] != "") print m[1]}\' | sort -u); fi; for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done; sleep 1; for pid in $pids; do kill -KILL "$pid" 2>/dev/null || true; done; true'
 ExecStart=/opt/springai/crypto-ai-trader/venv/bin/python3 -m src.web.server
 
-Restart=always
+Restart=on-failure
 RestartSec=5
+
+TimeoutStopSec=30
+KillSignal=SIGTERM
 
 StandardOutput=journal
 StandardError=journal
