@@ -244,10 +244,8 @@
               <span class="coin-status status-{{ coin_data.status }}">{{ coin_data.status|upper }}</span>
             </div>
             
-            {% if coin_data.price %}
-              <div class="coin-price">💰 ${{ "%.6f"|format(coin_data.price) }}</div>
-            {% elif coin_data.current_price %}
-              <div class="coin-price">💰 ${{ "%.4f"|format(coin_data.current_price) }}</div>
+            {% if coin_data.current_price %}
+              <div class="coin-price">💰 ${{ "%.6f"|format(coin_data.current_price) }}</div>
             {% endif %}
             
             {% if coin_data.criteria %}
