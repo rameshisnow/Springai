@@ -3,6 +3,9 @@ Trade Safety Gates - Non-negotiable rules before executing any trade
 Enforces: Dynamic balance sizing, confidence gates, position limits, safety circuits
 """
 from typing import Dict, Optional
+from datetime import datetime
+
+from src.utils.database import get_session, TradeRecordModel
 from src.utils.logger import logger
 from src.config.constants import (
     MAX_OPEN_POSITIONS,
@@ -35,16 +38,36 @@ class TradeSafetyGates:
         Returns:
             (can_trade: bool, reason: str | None)
         """
-        from datetime import datetime
-        
         strategy = self.strategy_manager.get_strategy(symbol)
         
         if not strategy:
             # No strategy = no monthly limit
             return True, None
         
-        # Check if can trade this month
-        if not strategy.can_trade_this_month(datetime.now(), symbol):
+        # Goldilock monthly limit must be persistent across restarts.
+        # We enforce it via the SQLite trade_records table (written by order_manager).
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if month_start.month == 12:
+            next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month_start = month_start.replace(month=month_start.month + 1)
+
+        session = get_session()
+        try:
+            trades_this_month = (
+                session.query(TradeRecordModel)
+                .filter(
+                    TradeRecordModel.symbol == symbol,
+                    TradeRecordModel.entry_time >= month_start,
+                    TradeRecordModel.entry_time < next_month_start,
+                )
+                .count()
+            )
+        finally:
+            session.close()
+
+        if trades_this_month >= strategy.config.get("max_trades_per_month", 1):
             return False, f"Monthly trade limit reached for {symbol}"
         
         return True, None
