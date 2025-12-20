@@ -20,7 +20,6 @@ from src.trading.risk_manager import risk_manager
 from src.trading.order_manager import order_manager
 from src.trading.safety_gates import safety_gates
 from src.monitoring.signal_monitor import signal_monitor
-from src.monitoring.position_monitor import position_monitor
 from src.utils.logger import logger
 from src.config.constants import (
     ANALYSIS_INTERVAL_MINUTES,
@@ -1185,12 +1184,11 @@ signal_orchestrator = SignalOrchestrator()
 
 
 async def main():
-    """Main entry point for signal generation and position monitoring"""
+    """Main entry point for continuous signal generation."""
     logger.info("=" * 80)
-    logger.info("🚀 SIGNAL GENERATOR AND POSITION MONITOR STARTED")
+    logger.info("🚀 SIGNAL GENERATOR STARTED")
     logger.info("=" * 80)
     logger.info(f"Analysis cycle interval: {ANALYSIS_INTERVAL_MINUTES} minutes")
-    logger.info(f"Position check interval: 5 minutes")
     logger.info("=" * 80)
     
     # Sync any orphaned positions from Binance on startup
@@ -1198,15 +1196,10 @@ async def main():
     synced_count = risk_manager.sync_positions_from_binance()
     logger.info(f"Position sync complete. Recovered {synced_count} position(s).")
     
-    # Run signal generation and position monitoring in parallel
     try:
-        await asyncio.gather(
-            signal_orchestrator.run_continuous(),  # AI signal generation (60 min interval)
-            position_monitor.monitor_positions(),   # Position monitoring (5 min interval)
-        )
+        await signal_orchestrator.run_continuous()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
-        position_monitor.stop()
         raise
 
 
