@@ -159,7 +159,7 @@ def test_max_hold():
 
 
 def test_position_sizing():
-    """Test position size = 40%"""
+    """Test position size = 20%"""
     print("\n" + "="*80)
     print("TEST 6: Position Sizing")
     print("="*80)
@@ -171,12 +171,12 @@ def test_position_sizing():
     
     print(f"Position size: {position_size_pct * 100}%")
     
-    if position_size_pct == 0.40:
-        print("✅ Position size = 40% per trade")
-        print("   Max 2 positions = 80% deployed, 20% reserve")
+    if position_size_pct == 0.20:
+        print("✅ Position size = 20% per trade")
+        print("   4 strategies @20% = 80% deployed, 20% reserve")
         return True
     else:
-        print(f"❌ Expected 40%, got {position_size_pct * 100}%")
+        print(f"❌ Expected 20%, got {position_size_pct * 100}%")
         return False
 
 

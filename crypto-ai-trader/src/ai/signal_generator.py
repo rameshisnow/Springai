@@ -269,6 +269,8 @@ class SignalOrchestrator:
 
         filtered: List[Dict] = []
         screening_details: Dict[str, Dict] = {}  # Track why coins pass/fail
+        # Expose latest screening details to later tiers (Claude + safety gates)
+        self.last_screening_details = screening_details
 
         logger.info(f"📋 Evaluating {len(top_coins)} coins using strategy entry conditions...")
 
@@ -795,6 +797,21 @@ Output JSON only:
             logger.info(f"\n🎯 Oracle selected: {selected_symbol}")
             logger.info(f"   Edge: {edge}")
             logger.info(f"   Reason: {oracle_decision.get('reason')}")
+
+            # Record Claude decision into screening results (for UI transparency)
+            try:
+                if isinstance(self.last_screening_details, dict) and selected_symbol in self.last_screening_details:
+                    self.last_screening_details[selected_symbol].setdefault('claude', {})
+                    self.last_screening_details[selected_symbol]['claude'].update({
+                        'action': oracle_decision.get('action'),
+                        'edge': edge,
+                        'confidence': oracle_decision.get('confidence'),
+                        'reason': oracle_decision.get('reason'),
+                        'stop_loss': oracle_decision.get('stop_loss'),
+                        'take_profit': oracle_decision.get('take_profit'),
+                    })
+            except Exception:
+                pass
             
             # ===================================================================
             # TIER 3: Trade Execution (strict validation before execution)
@@ -823,6 +840,17 @@ Output JSON only:
             
             if not approved:
                 logger.warning(f"❌ Trade rejected: {rejection_reason}")
+
+                # Record rejection reason into screening results
+                try:
+                    if isinstance(self.last_screening_details, dict) and selected_symbol in self.last_screening_details:
+                        self.last_screening_details[selected_symbol].setdefault('gates', {})
+                        self.last_screening_details[selected_symbol]['gates'].update({
+                            'approved': False,
+                            'rejection_reason': rejection_reason,
+                        })
+                except Exception:
+                    pass
                 
                 signal_monitor.add_signal({
                     'symbol': selected_symbol,
@@ -845,10 +873,21 @@ Output JSON only:
                 }
             
             logger.info("✅ All safety gates PASSED")
+
+            # Record gate approval into screening results
+            try:
+                if isinstance(self.last_screening_details, dict) and selected_symbol in self.last_screening_details:
+                    self.last_screening_details[selected_symbol].setdefault('gates', {})
+                    self.last_screening_details[selected_symbol]['gates'].update({
+                        'approved': True,
+                        'rejection_reason': None,
+                    })
+            except Exception:
+                pass
             
             # Calculate position size (from safety_gates)
             quantity, position_value = safety_gates.calculate_position_size(
-                symbol=symbol,
+                symbol=selected_symbol,
                 account_balance=risk_manager.current_balance,
                 current_price=current_price,
                 atr_percent=indicators['atr_percent'],

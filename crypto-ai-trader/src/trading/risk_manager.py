@@ -368,6 +368,7 @@ class RiskManager:
         
         # Check max concurrent positions (excluding dust positions < $1)
         meaningful_positions = 0
+        any_losing_position = False
         for pos_symbol, position in self.positions.items():
             try:
                 from src.trading.binance_client import binance_client
@@ -375,12 +376,19 @@ class RiskManager:
                 position_value = position.quantity * current_price
                 if position_value >= 1.0:
                     meaningful_positions += 1
+                    _, pnl_percent = position.get_current_pnl(current_price)
+                    if pnl_percent < 0:
+                        any_losing_position = True
             except Exception:
                 # If we can't get price, count it to be safe
                 meaningful_positions += 1
         
         if meaningful_positions >= MAX_OPEN_POSITIONS:
             return False, f"Max concurrent positions ({MAX_OPEN_POSITIONS}) reached (excluding dust < $1)"
+
+        # Portfolio rule: never add to losing positions (block new entries if any open position is red)
+        if any_losing_position:
+            return False, "Blocked: existing position is currently losing"
         
         # Check daily loss limit
         if self.daily_loss >= DAILY_MAX_LOSS_AUD:

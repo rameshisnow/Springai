@@ -70,6 +70,9 @@ def dashboard():
     sydney_tz = pytz.timezone('Australia/Sydney')
     scan_info = _get_scan_timing(sydney_tz)
 
+    # 3b. Load latest screening details (strategy conditions + Claude + safety gates)
+    screening_results = _load_screening_results()
+
     # 4. System health / kill switch status
     system_health = _load_system_health()
 
@@ -137,6 +140,7 @@ def dashboard():
         dry_run=constants.DRY_RUN_ENABLED,
         last_claude_response=last_claude_response,
         scan_info=scan_info,
+        screening_results=screening_results,
         system_health=system_health,
     )
 
@@ -168,14 +172,31 @@ def _build_active_trades(positions_data: Dict[str, Dict]) -> List[Dict]:
         pnl = (current_price - entry_price) * quantity
         pnl_percent = ((current_price - entry_price) / entry_price) * 100 if entry_price else 0
         
-        # Strategy status
+        # Strategy-aware status (use configured strategy when available)
+        min_hold_days = 7
+        max_hold_days = 90
+        trailing_stop_pct = 0.05
+        strategy_name = ""
+        try:
+            from src.strategies.strategy_manager import StrategyManager
+
+            strategy = StrategyManager().get_strategy(symbol)
+            if strategy:
+                strategy_name = getattr(strategy, "name", strategy.__class__.__name__)
+                min_hold_days = int(strategy.get_min_hold_days())
+                max_hold_days = int(strategy.get_max_hold_days())
+                trailing_stop_pct = float(strategy.get_trailing_stop_pct())
+        except Exception:
+            # Dashboard should never fail rendering due to strategy lookup
+            pass
+
         strategy_status = ""
-        if hold_days < 7:
-            strategy_status = f"Min Hold (Day {hold_days}/7)"
+        if hold_days < min_hold_days:
+            strategy_status = f"Min Hold (Day {hold_days}/{min_hold_days})"
         elif tp1_hit:
-            trailing_price = highest_price * 0.95
+            trailing_price = highest_price * (1 - trailing_stop_pct)
             strategy_status = f"Trailing Active (${trailing_price:.4f})"
-        elif hold_days >= 90:
+        elif hold_days >= max_hold_days:
             strategy_status = "Max Hold Reached!"
         else:
             strategy_status = f"Day {hold_days}"
@@ -196,6 +217,7 @@ def _build_active_trades(positions_data: Dict[str, Dict]) -> List[Dict]:
                 "tp1_hit": tp1_hit,
                 "highest_price": highest_price,
                 "strategy_status": strategy_status,
+                "strategy_name": strategy_name,
             }
         )
     return trades

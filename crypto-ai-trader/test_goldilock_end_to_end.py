@@ -3,7 +3,7 @@ End-to-End Integration Test for Goldilock Strategy
 
 Tests complete flow:
 1. Strategy screening (entry conditions)
-2. Position sizing (40%)
+2. Position sizing (20%)
 3. Safety gates (monthly limit)
 4. Position creation
 5. Position monitor exit logic (min hold → TP1 → trailing → TP2)
@@ -24,6 +24,7 @@ from src.trading.safety_gates import TradeSafetyGates
 from src.trading.risk_manager import risk_manager, Position
 from src.monitoring.position_monitor import PositionMonitor
 from src.utils.logger import logger
+from src.utils.database import get_session, TradeRecordModel
 
 print("=" * 80)
 print("END-TO-END INTEGRATION TEST - GOLDILOCK STRATEGY")
@@ -67,48 +68,66 @@ async def test_1_strategy_screening():
             continue
         
         print(f"✓ 4H candles: {len(df_4h)} bars")
+
+        # Ensure datetime index (strategies expect timestamp index)
+        if not isinstance(df_4h.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+            if 'timestamp' in df_4h.columns:
+                df_4h['timestamp'] = pd.to_datetime(df_4h['timestamp'])
+                df_4h = df_4h.set_index('timestamp').sort_index()
         
-        # Calculate indicators for display
+        # Calculate indicators for display (strategy-specific columns may differ)
         df_4h = strategy.calculate_indicators(df_4h)
-        
+
         current_price = float(df_4h.iloc[-1]['close'])
-        rsi = float(df_4h.iloc[-1]['rsi'])
-        ema9 = float(df_4h.iloc[-1]['ema_9'])
-        ema21 = float(df_4h.iloc[-1]['ema_21'])
-        
+        rsi = float(df_4h.iloc[-1]['rsi']) if 'rsi' in df_4h.columns and not pd.isna(df_4h.iloc[-1]['rsi']) else float('nan')
+
         print(f"\n📈 Current Market State:")
         print(f"   Price: ${current_price:.4f}")
-        print(f"   RSI: {rsi:.1f} (need < 40)")
-        print(f"   EMA 9: ${ema9:.4f}")
-        print(f"   EMA 21: ${ema21:.4f}")
-        print(f"   EMA Cross: {'✓' if ema9 > ema21 else '✗'}")
-        
-        # Simple condition check (without full entry check)
-        conditions_met = []
-        if ema9 > ema21:
-            conditions_met.append('ema_cross')
-        if rsi < 40:
-            conditions_met.append('rsi_oversold')
-        
-        # Check volume
-        if 'volume_ratio' in df_4h.columns and not pd.isna(df_4h.iloc[-1]['volume_ratio']):
-            vol_ratio = float(df_4h.iloc[-1]['volume_ratio'])
-            if vol_ratio > 1.3:
-                conditions_met.append('volume_spike')
-        
-        # Check MACD
-        if 'macd_bullish' in df_4h.columns and df_4h.iloc[-1]['macd_bullish']:
-            conditions_met.append('macd_bullish')
-        
-        reason = f"{len(conditions_met)}/4_conds:" + ",".join(conditions_met) if conditions_met else "no_conditions"
-        
-        if rsi < 40 and len(conditions_met) >= 3:
+        if not pd.isna(rsi):
+            print(f"   RSI: {rsi:.1f}")
+
+        # Show EMA info if present (Goldilock uses ema_9/ema_21; BTC uses ema_fast/ema_slow)
+        if 'ema_9' in df_4h.columns and 'ema_21' in df_4h.columns:
+            ema9 = float(df_4h.iloc[-1]['ema_9'])
+            ema21 = float(df_4h.iloc[-1]['ema_21'])
+            print(f"   EMA 9: ${ema9:.4f}")
+            print(f"   EMA 21: ${ema21:.4f}")
+            print(f"   EMA Cross: {'✓' if ema9 > ema21 else '✗'}")
+        elif 'ema_fast' in df_4h.columns and 'ema_slow' in df_4h.columns:
+            ema_fast = float(df_4h.iloc[-1]['ema_fast'])
+            ema_slow = float(df_4h.iloc[-1]['ema_slow'])
+            print(f"   EMA Fast: ${ema_fast:.4f}")
+            print(f"   EMA Slow: ${ema_slow:.4f}")
+            print(f"   EMA Cross: {'✓' if ema_fast > ema_slow else '✗'}")
+
+        # Use the strategy itself as the source of truth
+        # Build a daily dataframe compatible with strategy expectations
+        df_for_daily = df_4h.copy()
+        if not isinstance(df_for_daily.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+            if 'timestamp' in df_for_daily.columns:
+                df_for_daily['timestamp'] = pd.to_datetime(df_for_daily['timestamp'])
+                df_for_daily = df_for_daily.set_index('timestamp').sort_index()
+
+        if isinstance(df_for_daily.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+            df_daily = df_for_daily.resample('1D').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+        else:
+            # Fallback: use 4H as a proxy if we cannot resample
+            df_daily = df_4h
+
+        should_enter, reason = strategy.check_entry(
+            df_1h=pd.DataFrame(),
+            df_4h=df_4h,
+            df_daily=df_daily,
+            current_idx=-1,
+        )
+
+        if should_enter:
             print(f"\n✅ ENTRY SIGNAL: {reason}")
             results[symbol] = {
                 'status': 'passed',
                 'reason': reason,
                 'price': current_price,
-                'rsi': rsi
+                'rsi': None if pd.isna(rsi) else float(rsi)
             }
         else:
             print(f"\n❌ NO ENTRY: {reason}")
@@ -116,7 +135,7 @@ async def test_1_strategy_screening():
                 'status': 'failed',
                 'reason': reason,
                 'price': current_price,
-                'rsi': rsi
+                'rsi': None if pd.isna(rsi) else float(rsi)
             }
     
     print("\n" + "=" * 80)
@@ -142,7 +161,7 @@ async def test_1_strategy_screening():
 async def test_2_position_sizing():
     """Test 2: Position sizing calculation"""
     print("\n" + "=" * 80)
-    print("TEST 2: Position Sizing (40% per trade)")
+    print("TEST 2: Position Sizing (20% per trade)")
     print("=" * 80)
     
     safety_gates = TradeSafetyGates()
@@ -181,12 +200,12 @@ async def test_2_position_sizing():
         print(f"✓ Position value: ${position_value:.2f}")
         print(f"✓ Position %: {position_pct:.1f}%")
         
-        # Verify it's 40%
-        expected_value = test_balance * 0.90 * 0.40  # 90% usable, 40% position
+        # Verify it's 20%
+        expected_value = test_balance * 0.90 * 0.20  # 90% usable, 20% position
         tolerance = 1.0  # $1 tolerance
         
         if abs(position_value - expected_value) < tolerance:
-            print(f"✅ PASS: Position size is ~40% (${expected_value:.2f})")
+            print(f"✅ PASS: Position size is ~20% (${expected_value:.2f})")
             results[symbol] = {'status': 'passed', 'value': position_value, 'pct': position_pct}
         else:
             print(f"❌ FAIL: Expected ${expected_value:.2f}, got ${position_value:.2f}")
@@ -209,12 +228,34 @@ async def test_3_monthly_limit():
     
     safety_gates = TradeSafetyGates()
     
-    # Simulate a trade this month
-    now = datetime.now()
+    # Simulate a trade this month (monthly limit is enforced via DB trade_records)
+    now = datetime.utcnow()
+    # Use a real strategy-tracked symbol so the strategy-based monthly limit
+    # is enforced. Keep the test repeatable by clearing any existing records
+    # for the current month.
     symbol = 'DOGEUSDT'
     
     print(f"\nTesting {symbol}...")
     
+    # Clear any existing trade records for this symbol in the current month
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if month_start.month == 12:
+        next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month_start = month_start.replace(month=month_start.month + 1)
+
+    session = get_session()
+    try:
+        session.query(TradeRecordModel).filter(
+            TradeRecordModel.symbol == symbol,
+            TradeRecordModel.entry_time >= month_start,
+            TradeRecordModel.entry_time < next_month_start,
+        ).delete(synchronize_session=False)
+        session.commit()
+    finally:
+        session.close()
+
     # First trade should be allowed
     can_trade, reason = safety_gates.check_monthly_trade_limit(symbol)
     
@@ -222,13 +263,32 @@ async def test_3_monthly_limit():
     if can_trade:
         print(f"✅ PASS: Trade allowed (no trades this month yet)")
         
-        # Record the trade
-        strategy = safety_gates.strategy_manager.get_strategy(symbol)
-        strategy.record_trade(now, symbol)
-        print(f"✓ Recorded trade for {symbol} in {now.strftime('%B %Y')}")
+        # Insert a trade record for this month so the DB-backed limit triggers
+        session = get_session()
+        try:
+            trade = TradeRecordModel(
+                symbol=symbol,
+                side="BUY",
+                entry_time=now,
+                exit_time=None,
+                entry_price=0.0,
+                exit_price=None,
+                quantity=0.0,
+                profit_loss=0.0,
+                pnl_percent=0.0,
+                status="OPEN",
+                metadata_payload={"source": "e2e_monthly_limit_test"},
+            )
+            session.add(trade)
+            session.commit()
+        finally:
+            session.close()
+
+        print(f"✓ Inserted DB trade record for {symbol} in {now.strftime('%B %Y')}")
         
-        # Second trade should be blocked
-        can_trade2, reason2 = safety_gates.check_monthly_trade_limit(symbol)
+        # Second trade should be blocked (fresh instance validates persistence)
+        safety_gates_2 = TradeSafetyGates()
+        can_trade2, reason2 = safety_gates_2.check_monthly_trade_limit(symbol)
         
         print(f"\n2nd trade attempt (same month):")
         if not can_trade2:
@@ -411,7 +471,7 @@ async def run_all_tests():
     
     test_names = {
         'screening': 'Strategy Screening (Entry Conditions)',
-        'position_sizing': 'Position Sizing (40% per trade)',
+        'position_sizing': 'Position Sizing (20% per trade)',
         'monthly_limit': 'Monthly Trade Limit (1 per coin)',
         'exit_logic': 'Exit Logic Simulation (8 scenarios)',
         'monitor': 'Position Monitor Integration',

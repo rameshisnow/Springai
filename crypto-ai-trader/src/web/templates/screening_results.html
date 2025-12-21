@@ -152,6 +152,13 @@
       color: #dc2626;
       font-weight: 600;
     }
+    .cond-box {
+      margin: 4px 0;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .cond-ok { background: #d1fae5; }
+    .cond-bad { background: #fee2e2; }
     .reason {
       margin-top: 12px;
       padding: 8px 12px;
@@ -198,7 +205,7 @@
       <h1>📊 Goldilock Strategy Screening</h1>
       <div style="font-size: 0.9rem; color: #6b7280;">
         Monitors DOGEUSDT, SHIBUSDT, SOLUSDT for entry conditions (RSI < 40 + 3/4 indicators)
-        <br>Auto-refreshes every 30 seconds • Scans every 30 minutes
+        <br>Auto-refreshes every 30 seconds • Scans on 4H schedule (a few minutes after close)
       </div>
     </div>
     
@@ -258,14 +265,14 @@
                   </div>
                   
                   <!-- RSI Condition -->
-                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.rsi_met %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                  <div class="cond-box {% if coin_data.criteria.rsi_met %}cond-ok{% else %}cond-bad{% endif %}">
                     {% if coin_data.criteria.rsi_met %}✅{% else %}❌{% endif %} 
                     <strong>RSI:</strong> {{ "%.1f"|format(coin_data.criteria.rsi) }} 
                     (need < {{ coin_data.criteria.rsi_target }})
                   </div>
                   
                   <!-- EMA Cross -->
-                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.ema_cross %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                  <div class="cond-box {% if coin_data.criteria.ema_cross %}cond-ok{% else %}cond-bad{% endif %}">
                     {% if coin_data.criteria.ema_cross %}✅{% else %}❌{% endif %} 
                     <strong>EMA Cross:</strong> EMA9 {{ "%.6f"|format(coin_data.criteria.ema9) }}
                     {% if coin_data.criteria.ema_cross %}>&lt;{% else %}≤{% endif %} 
@@ -273,14 +280,14 @@
                   </div>
                   
                   <!-- Volume Spike -->
-                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.volume_spike %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                  <div class="cond-box {% if coin_data.criteria.volume_spike %}cond-ok{% else %}cond-bad{% endif %}">
                     {% if coin_data.criteria.volume_spike %}✅{% else %}❌{% endif %} 
                     <strong>Volume:</strong> {{ "%.2f"|format(coin_data.criteria.volume_ratio) }}x 
                     (need > {{ coin_data.criteria.volume_target }}x)
                   </div>
                   
                   <!-- MACD -->
-                  <div style="margin: 4px 0; padding: 4px; background: {% if coin_data.criteria.macd_bullish %}#d1fae5{% else %}#fee2e2{% endif %}; border-radius: 4px;">
+                  <div class="cond-box {% if coin_data.criteria.macd_bullish %}cond-ok{% else %}cond-bad{% endif %}">
                     {% if coin_data.criteria.macd_bullish %}✅{% else %}❌{% endif %} 
                     <strong>MACD:</strong> {{ "Bullish" if coin_data.criteria.macd_bullish else "Bearish" }}
                   </div>
@@ -316,6 +323,32 @@
                       EMA21: ${{ "%.2f"|format(coin_data.filters.ema.ema21_1h) }}<br>
                       <em>(1H: C>E9>E21)</em>
                     </div>
+                  </div>
+                </div>
+              {% endif %}
+
+              {% if coin_data.claude %}
+                <div class="filter-section" style="margin-top: 12px; border-left: 3px solid #8b5cf6;">
+                  <div class="filter-name">🤖 Claude Decision</div>
+                  <div class="filter-details">
+                    Action: <strong>{{ coin_data.claude.action or 'N/A' }}</strong>
+                    {% if coin_data.claude.edge %} • Edge: <strong>{{ coin_data.claude.edge }}</strong>{% endif %}
+                    {% if coin_data.claude.confidence is not none %} • Confidence: <strong>{{ coin_data.claude.confidence }}</strong>{% endif %}
+                    <br>Reason: {{ coin_data.claude.reason or 'N/A' }}
+                  </div>
+                </div>
+              {% endif %}
+
+              {% if coin_data.gates %}
+                <div class="filter-section" style="margin-top: 12px; border-left: 3px solid #3b82f6;">
+                  <div class="filter-name">🛡️ Safety Gates</div>
+                  <div class="filter-details">
+                    {% if coin_data.gates.approved %}
+                      <span class="filter-passed">APPROVED</span>
+                    {% else %}
+                      <span class="filter-failed">REJECTED</span>
+                      {% if coin_data.gates.rejection_reason %}<br>Reason: {{ coin_data.gates.rejection_reason }}{% endif %}
+                    {% endif %}
                   </div>
                 </div>
               {% endif %}

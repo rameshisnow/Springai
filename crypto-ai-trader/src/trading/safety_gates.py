@@ -150,7 +150,7 @@ class TradeSafetyGates:
     ) -> tuple[float, float]:
         """
         ✅ FIXED: Calculate position size from DYNAMIC account balance
-        Uses strategy-based sizing: 40% for Goldilock coins, 6% for others
+        Uses strategy-based sizing when a strategy exists; otherwise defaults.
         
         Args:
             symbol: Trading symbol (e.g., DOGEUSDT)
@@ -161,14 +161,24 @@ class TradeSafetyGates:
         Returns:
             (quantity, position_value_usd)
         """
-        # Get strategy-specific position size if available
-        strategy = self.strategy_manager.get_strategy(symbol)
-        if strategy:
-            position_size_pct = strategy.get_position_size_pct()  # 40% for Goldilock
-            logger.info(f"Using strategy position size for {symbol}: {position_size_pct*100}%")
+        # Portfolio allocation (live): overrides per-strategy sizing for tracked symbols
+        portfolio_allocations: Dict[str, float] = {
+            "DOGEUSDT": 0.40,
+            "SHIBUSDT": 0.30,
+            "SOLUSDT": 0.30,
+        }
+        if symbol in portfolio_allocations:
+            position_size_pct = float(portfolio_allocations[symbol])
+            logger.info(f"Using portfolio allocation sizing for {symbol}: {position_size_pct*100:.1f}%")
         else:
-            position_size_pct = MAX_POSITION_EXPOSURE_PERCENT / 100  # 6% default
-            logger.info(f"Using default position size for {symbol}: {position_size_pct*100}%")
+            # Get strategy-specific position size if available
+            strategy = self.strategy_manager.get_strategy(symbol)
+            if strategy:
+                position_size_pct = float(strategy.get_position_size_pct())
+                logger.info(f"Using strategy position size for {symbol}: {position_size_pct*100:.1f}%")
+            else:
+                position_size_pct = MAX_POSITION_EXPOSURE_PERCENT / 100  # 6% default
+                logger.info(f"Using default position size for {symbol}: {position_size_pct*100:.1f}%")
         
         # ✅ Apply 90% buffer to account balance (10% safety margin for fees/slippage)
         usable_balance = account_balance * BALANCE_BUFFER_PERCENT

@@ -73,6 +73,64 @@
       </div>
     </div>
   </section>
+
+  <!-- 3b. Latest Screening Snapshot -->
+  <section class="section-card" style="background: #ffffff; margin-bottom: 20px;">
+    <h2>📊 Latest Screening Snapshot</h2>
+    {% if screening_results and screening_results.coins %}
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px;">
+        {% for symbol, coin in screening_results.coins.items() %}
+          <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: {% if coin.status == 'passed' %}#f0fdf4{% elif coin.status == 'failed' %}#fef2f2{% elif coin.status == 'skipped' %}#fffbeb{% else %}#f9fafb{% endif %};">
+            <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
+              <div style="font-weight: 700; color:#111827;">{{ symbol }}</div>
+              <div style="font-size: 0.85rem; font-weight: 700; color: {% if coin.status == 'passed' %}#065f46{% elif coin.status == 'failed' %}#7f1d1d{% elif coin.status == 'skipped' %}#92400e{% else %}#374151{% endif %};">
+                {{ coin.status|upper }}
+              </div>
+            </div>
+
+            {% if coin.current_price %}
+              <div style="font-size: 0.9rem; color:#6b7280;">Price: ${{ "%.6f"|format(coin.current_price) }}</div>
+            {% endif %}
+
+            {% if coin.conditions_met is not none and coin.conditions_required is not none %}
+              <div style="margin-top: 6px; font-size: 0.9rem; color:#111827;">
+                Conditions: <strong>{{ coin.conditions_met }}/{{ coin.conditions_required }}</strong>
+              </div>
+            {% endif %}
+
+            {% if coin.reason %}
+              <div style="margin-top: 6px; font-size: 0.85rem; color:#374151;">{{ coin.reason }}</div>
+            {% endif %}
+
+            {% if coin.claude %}
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #d1d5db; font-size: 0.85rem; color:#374151;">
+                <div><strong>Claude:</strong> {{ coin.claude.action or 'N/A' }}{% if coin.claude.edge %} • {{ coin.claude.edge }}{% endif %}</div>
+                {% if coin.claude.reason %}<div style="color:#6b7280;">{{ coin.claude.reason }}</div>{% endif %}
+              </div>
+            {% endif %}
+
+            {% if coin.gates %}
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #d1d5db; font-size: 0.85rem; color:#374151;">
+                <div><strong>Gates:</strong>
+                  {% if coin.gates.approved %}
+                    <span style="color:#059669; font-weight:700;">APPROVED</span>
+                  {% else %}
+                    <span style="color:#dc2626; font-weight:700;">REJECTED</span>
+                  {% endif %}
+                </div>
+                {% if coin.gates.rejection_reason %}<div style="color:#6b7280;">{{ coin.gates.rejection_reason }}</div>{% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top: 10px; font-size: 0.8rem; color:#6b7280;">
+        Source: <code>data/screening_results.json</code> • Detailed view: <a href="{{ url_for('screening_results_page') }}">Screening page</a>
+      </div>
+    {% else %}
+      <div style="color:#6b7280; margin-top: 10px;">No screening results yet.</div>
+    {% endif %}
+  </section>
   
   <section class="metrics-grid">
     {% for metric in metrics %}
@@ -84,19 +142,20 @@
     {% endfor %}
   </section>
   <section class="section-card">
-    <h2>Active Trades <span style="font-size: 0.85rem; color: #6b7280; font-weight: normal;">(Goldilock Strategy: DOGE/SHIB/SOL)</span></h2>
+    <h2>Active Trades <span style="font-size: 0.85rem; color: #6b7280; font-weight: normal;">(Strategy-based)</span></h2>
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
+            <th>Strategy</th>
             <th>Quantity</th>
             <th>Entry</th>
             <th>Current</th>
             <th>High</th>
             <th>P&amp;L</th>
             <th>Stop Loss</th>
-            <th>TP1 (+15%)</th>
+            <th>Take Profit</th>
             <th>Hold Days</th>
             <th>Strategy Status</th>
             <th>Last Update</th>
@@ -106,18 +165,17 @@
           {% for trade in active_trades %}
           <tr>
             <td><strong>{{ trade.symbol }}</strong></td>
+            <td style="font-size: 0.85rem; color: #6b7280;">{{ trade.strategy_name or 'Default' }}</td>
             <td>{{ "%.8g" % trade.quantity }}</td>
             <td>${{ "%.4f" % trade.entry }}</td>
             <td>${{ "%.4f" % trade.current }}</td>
             <td style="color: #8b5cf6; font-weight: 600;">${{ "%.4f" % trade.highest_price }}</td>
             <td style="color: {{ '#10b981' if trade.pnl >= 0 else '#ef4444' }}; font-weight: 600;">{{ '+' if trade.pnl >= 0 else '' }}${{ "%.2f" % trade.pnl }} ({{ "%+.1f" % trade.pnl_percent }}%)</td>
-            <td>${{ "%.4f" % trade.stop_loss }} <br><span style="font-size: 0.75rem; color: #6b7280;">{{ '8%' if trade.hold_days < 7 else '3%' }}</span></td>
+            <td>${{ "%.4f" % trade.stop_loss }}</td>
             <td>${{ "%.4f" % trade.take_profit }} <br>{% if trade.tp1_hit %}<span style="font-size: 0.75rem; color: #10b981; font-weight: 600;">✓ HIT</span>{% else %}<span style="font-size: 0.75rem; color: #6b7280;">Pending</span>{% endif %}</td>
             <td style="text-align: center;">
               <strong>{{ trade.hold_days }}</strong><br>
-              <span style="font-size: 0.75rem; color: {{ '#f59e0b' if trade.hold_days < 7 else '#10b981' if trade.hold_days < 90 else '#ef4444' }};">
-                {{ 'Min hold' if trade.hold_days < 7 else 'Active' if trade.hold_days < 90 else 'MAX!' }}
-              </span>
+              <span style="font-size: 0.75rem; color: #6b7280;">Days</span>
             </td>
             <td>
               <span style="padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: 600; {% if trade.hold_days < 7 %}background: #fef3c7; color: #92400e{% elif trade.tp1_hit %}background: #d1fae5; color: #065f46{% elif trade.hold_days >= 90 %}background: #fee2e2; color: #991b1b{% else %}background: #e0e7ff; color: #3730a3{% endif %}">
@@ -127,22 +185,14 @@
             <td style="font-size: 0.85rem; color: #6b7280;">{{ trade.last_update }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="11" style="text-align: center; padding: 24px; color: #6b7280;">No open trades - Waiting for next signal (DOGE/SHIB/SOL only)</td></tr>
+          <tr><td colspan="12" style="text-align: center; padding: 24px; color: #6b7280;">No open trades - Waiting for next signal</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <!-- Goldilock Strategy Legend -->
     <div style="margin-top: 16px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 0.85rem;">
-      <strong style="color: #111827;">Strategy Info:</strong>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px;">
-        <div><span style="color: #f59e0b;">●</span> <strong>Days 0-6:</strong> 8% SL (min hold, only SL exits)</div>
-        <div><span style="color: #10b981;">●</span> <strong>Day 7+:</strong> 3% SL, TP1/TP2 enabled</div>
-        <div><span style="color: #8b5cf6;">●</span> <strong>TP1 (+15%):</strong> Close 50%, activate trailing</div>
-        <div><span style="color: #3b82f6;">●</span> <strong>TP2 (+30%):</strong> Close remaining 50%</div>
-        <div><span style="color: #ec4899;">●</span> <strong>Trailing:</strong> 5% from highest (after TP1)</div>
-        <div><span style="color: #ef4444;">●</span> <strong>Day 90:</strong> Max hold - force exit</div>
-      </div>
+      <strong style="color: #111827;">Note:</strong>
+      <span style="color:#6b7280">Stop/TP/trailing behavior is strategy-specific per symbol.</span>
     </div>
   </section>
   <section class="section-card">

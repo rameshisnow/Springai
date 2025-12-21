@@ -1,3 +1,13 @@
+# Local historical market data (do not commit)
+crypto-ai-trader/historical_data/
+
+# Local backtest outputs (if generated)
+crypto-ai-trader/backtest_outputs/
+crypto-ai-trader/tools/*.json
+crypto-ai-trader/tools/*.csv
+
+# Local CSV artifacts in repo root (do not commit)
+crypto-ai-trader/*.csv
 # OS
 .DS_Store
 

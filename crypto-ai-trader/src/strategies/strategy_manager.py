@@ -30,8 +30,8 @@ class StrategyManager:
         # Create Goldilock strategy instance
         goldilock = GoldilockStrategy()
         self.strategies['goldilock'] = goldilock
-        
-        # Map coins to Goldilock strategy
+
+        # Map coins to Goldilock strategy (LIVE SCOPE)
         goldilock_coins = ['DOGEUSDT', 'SHIBUSDT', 'SOLUSDT']
         for coin in goldilock_coins:
             self.coin_strategy_map[coin] = 'goldilock'
