@@ -483,6 +483,15 @@ class RiskManager:
         position = self.positions[symbol]
         pnl, pnl_percent = position.get_current_pnl(current_price)
         position.update_highest_price(current_price)
+
+        # Strategy-specific exit management (Goldilock for DOGE/SHIB/SOL only)
+        # Keep default behavior unchanged for all other symbols.
+        try:
+            from src.strategies.strategy_manager import StrategyManager
+
+            strategy = StrategyManager().get_strategy(symbol)
+        except Exception:
+            strategy = None
         
         result = {
             "symbol": symbol,
@@ -491,20 +500,100 @@ class RiskManager:
             "exit_signal": None,
             "reason": "",
         }
+
+        if strategy and strategy.__class__.__name__ == "GoldilockStrategy":
+            hold_days = 0
+            try:
+                hold_days = max(0, (datetime.now() - position.entry_time).days)
+            except Exception:
+                hold_days = 0
+
+            # 0) Max hold enforcement
+            max_hold_days = int(getattr(strategy, "get_max_hold_days", lambda: 0)() or 0)
+            if max_hold_days and hold_days >= max_hold_days:
+                result["exit_signal"] = "MAX_HOLD"
+                result["reason"] = f"Max hold reached: {hold_days}d >= {max_hold_days}d"
+                return result
+
+            # 1) Update stop loss based on holding period (8% for days 0-6, 3% day 7+)
+            try:
+                desired_stop = float(strategy.get_stop_loss(position.entry_price, hold_days))
+                if not position.stop_loss or position.stop_loss == 0:
+                    position.stop_loss = desired_stop
+                else:
+                    # Never loosen stop loss (only tighten upward)
+                    position.stop_loss = max(float(position.stop_loss), desired_stop)
+            except Exception:
+                pass
+
+            # 2) Stop loss always active
+            if position.stop_loss and current_price <= position.stop_loss:
+                result["exit_signal"] = "STOP_LOSS"
+                result["reason"] = f"Hit stop loss at ${current_price:.2f}"
+                return result
+
+            # 3) Min hold enforcement: no profit taking or trailing before day 7
+            min_hold_days = int(getattr(strategy, "get_min_hold_days", lambda: 0)() or 0)
+            if min_hold_days and hold_days < min_hold_days:
+                return result
+
+            # 4) Take profits & trailing (enabled after min hold)
+            # Ensure Goldilock-specific TP targets exist
+            if not position.take_profit_targets:
+                try:
+                    tps = strategy.get_take_profits(position.entry_price)
+                    position.take_profit_targets = [
+                        {
+                            "price": float(tp.get("price")),
+                            "position_percent": float(tp.get("size_pct", tp.get("position_percent", 0.5))),
+                            "hit": False,
+                        }
+                        for tp in tps
+                    ]
+                except Exception:
+                    position.take_profit_targets = []
+
+            # TP1 / TP2 handling (15% then 30%)
+            for i, target in enumerate(position.take_profit_targets):
+                if current_price >= target.get("price", float("inf")) and not target.get("hit", False):
+                    target["hit"] = True
+                    result["exit_signal"] = "TAKE_PROFIT"
+                    result["take_profit_level"] = i + 1
+                    result["position_percent"] = float(target.get("position_percent", 0.5))
+                    result["reason"] = f"Take profit {i+1} hit at ${current_price:.2f}"
+
+                    # After TP1 hits, enable trailing logic on remaining size
+                    if i == 0:
+                        position.tp1_hit = True
+                    return result
+
+            # Trailing stop only after TP1
+            if getattr(position, "tp1_hit", False):
+                try:
+                    trailing_pct = float(strategy.get_trailing_stop_pct())
+                    trailing_stop = position.highest_price * (1 - trailing_pct)
+                    if current_price <= trailing_stop:
+                        result["exit_signal"] = "TRAILING_STOP"
+                        result["reason"] = f"Trailing stop activated at ${current_price:.2f}"
+                        return result
+                except Exception:
+                    pass
+
+            return result
         
         # Check stop loss
         if current_price <= position.stop_loss:
             result["exit_signal"] = "STOP_LOSS"
             result["reason"] = f"Hit stop loss at ${current_price:.2f}"
             return result
-        
+
         # Check trailing stop
         trailing_stop = position.highest_price * (1 - TRAILING_STOP_PERCENT / 100)
         if current_price <= trailing_stop:
             result["exit_signal"] = "TRAILING_STOP"
             result["reason"] = f"Trailing stop activated at ${current_price:.2f}"
             return result
-        
+
         # Check take profit targets
         for i, target in enumerate(position.take_profit_targets):
             if current_price >= target['price'] and not target['hit']:
