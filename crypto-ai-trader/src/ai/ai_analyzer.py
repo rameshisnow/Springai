@@ -490,6 +490,27 @@ class AIAnalyzer:
             if edge and edge not in ['STRONG', 'MODERATE', 'WEAK']:
                 ai_logger.warning(f"Invalid edge category: {edge}, defaulting to WEAK")
                 decision['edge'] = 'WEAK'
+
+            # Ensure confidence is always present for safety gates.
+            # Some Oracle-mode responses omit "confidence" and Tier-3 defaults it to 0.
+            confidence = decision.get('confidence')
+            try:
+                confidence_val = float(confidence) if confidence is not None else None
+            except (TypeError, ValueError):
+                confidence_val = None
+
+            if confidence_val is None or confidence_val <= 0:
+                edge_for_conf = str(decision.get('edge', 'WEAK')).upper()
+                # Conservative mapping aligned to MIN_CONFIDENCE_TO_TRADE=70 gate.
+                if edge_for_conf == 'STRONG':
+                    decision['confidence'] = 75
+                elif edge_for_conf == 'MODERATE':
+                    decision['confidence'] = 70
+                else:
+                    decision['confidence'] = 0
+            else:
+                # Clamp into expected 0-100 range
+                decision['confidence'] = max(0, min(100, int(round(confidence_val))))
             
             ai_logger.info(f"✅ Oracle decision: {decision.get('action')} "
                           f"({decision.get('symbol', 'N/A')} @ {decision.get('edge', 'UNKNOWN')} edge)")
