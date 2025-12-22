@@ -826,6 +826,15 @@ Output JSON only:
             # Extract Claude's SL and TP suggestions
             claude_stop_loss = oracle_decision.get('stop_loss', 0)
             claude_take_profits = oracle_decision.get('take_profit', [])
+
+            # Explicitly log and persist the confidence used for Tier-3 gating.
+            # This prevents confusing UI rows like "Low confidence: 0%" without context.
+            from src.config.constants import MIN_CONFIDENCE_TO_TRADE
+            decision_confidence = oracle_decision.get('confidence', 0)
+            logger.info(
+                f"🧠 Tier-3 inputs for {selected_symbol}: edge={edge}, "
+                f"confidence={decision_confidence}% (min {MIN_CONFIDENCE_TO_TRADE}%)"
+            )
             
             # Apply strict safety gates
             approved, rejection_reason = safety_gates.validate_trade(
@@ -848,6 +857,8 @@ Output JSON only:
                         self.last_screening_details[selected_symbol]['gates'].update({
                             'approved': False,
                             'rejection_reason': rejection_reason,
+                            'confidence_used': decision_confidence,
+                            'min_confidence_required': MIN_CONFIDENCE_TO_TRADE,
                         })
                 except Exception:
                     pass
@@ -881,6 +892,8 @@ Output JSON only:
                     self.last_screening_details[selected_symbol]['gates'].update({
                         'approved': True,
                         'rejection_reason': None,
+                        'confidence_used': decision_confidence,
+                        'min_confidence_required': MIN_CONFIDENCE_TO_TRADE,
                     })
             except Exception:
                 pass
