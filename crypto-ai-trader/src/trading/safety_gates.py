@@ -162,14 +162,21 @@ class TradeSafetyGates:
             (quantity, position_value_usd)
         """
         # Portfolio allocation (live): overrides per-strategy sizing for tracked symbols
+        # User-provided allocation (total portfolio weights):
+        # - Reserve (USDT): 10.00% (handled via BALANCE_BUFFER_PERCENT)
+        # - Invested 90.00% split as:
+        #   ENA 28.43%, SHIB 20.01%, SOL 16.06%, TRX 14.01%, DOGE 11.49%
         portfolio_allocations: Dict[str, float] = {
-            "DOGEUSDT": 0.40,
-            "SHIBUSDT": 0.30,
-            "SOLUSDT": 0.30,
+            "ENAUSDT": 0.2843,
+            "SHIBUSDT": 0.2001,
+            "SOLUSDT": 0.1606,
+            "TRXUSDT": 0.1401,
+            "DOGEUSDT": 0.1149,
         }
+
         if symbol in portfolio_allocations:
             position_size_pct = float(portfolio_allocations[symbol])
-            logger.info(f"Using portfolio allocation sizing for {symbol}: {position_size_pct*100:.1f}%")
+            logger.info(f"Using portfolio allocation sizing for {symbol}: {position_size_pct*100:.2f}%")
         else:
             # Get strategy-specific position size if available
             strategy = self.strategy_manager.get_strategy(symbol)

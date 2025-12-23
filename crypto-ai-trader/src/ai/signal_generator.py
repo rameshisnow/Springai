@@ -632,7 +632,7 @@ Output JSON only:
             logger.info(f"ANALYSIS CYCLE START at {datetime.now(timezone.utc)}")
             logger.info("=" * 80)
             
-            # Step 1: Get coins from strategy manager (DOGE, SHIB, SOL only)
+            # Step 1: Get coins from strategy manager (tracked universe)
             tracked_coins = self.strategy_manager.get_all_tracked_coins()
             logger.info(f"Strategy-based tracking: {len(tracked_coins)} coins ({', '.join(tracked_coins)})")
             
